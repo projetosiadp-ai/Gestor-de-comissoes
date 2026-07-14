@@ -1,0 +1,42 @@
+{
+  "name": "juntador-comissoes",
+  "version": "0.0.0-alpha",
+  "description": "Juntador de comissões Dental Plus Alpha com dashboard, arrastar arquivos e histórico mensal",
+  "main": "main.js",
+  "scripts": {
+    "dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .\"",
+    "build:frontend": "vite build",
+    "build:app": "npm run build:frontend && electron-builder --win portable",
+    "start": "cross-env NODE_ENV=production electron ."
+  },
+  "dependencies": {
+    "electron": "^31.7.7",
+    "exceljs": "^4.4.0",
+    "pdfkit": "^0.15.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.1",
+    "concurrently": "^8.2.2",
+    "cross-env": "^7.0.3",
+    "electron-builder": "^24.13.3",
+    "vite": "^5.4.1",
+    "wait-on": "^7.2.0"
+  },
+  "build": {
+    "appId": "com.dentalplus.juntadorcomissoes",
+    "productName": "Juntador de Comissoes",
+    "win": {
+      "target": "portable"
+    },
+    "files": [
+      "dist/**/*",
+      "main.js",
+      "preload.js",
+      "assets/**/*",
+      "corretoras.json",
+      "package.json"
+    ]
+  }
+}

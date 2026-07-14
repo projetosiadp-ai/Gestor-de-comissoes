@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.gemini/
+.agents/
+*.log
+*.xlsx
+.DS_Store
+out/

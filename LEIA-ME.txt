@@ -1,0 +1,17 @@
+JUNTADOR DE COMISSÕES DENTAL PLUS — ALPHA
+
+Primeira execução:
+1. Abra o terminal nesta pasta.
+2. Execute: npm install
+3. Depois abra o arquivo Iniciar.bat.
+
+NOVIDADES DESTA ATUALIZAÇÃO
+- Menu lateral no padrão azul e branco da Dental Plus.
+- Dashboard com estatísticas gerais.
+- Área para arrastar e soltar as planilhas.
+- Mês de referência obrigatório para cada novo relatório.
+- Histórico local com relatórios salvos por mês.
+- Resultado simplificado: quantidade de vendedores, corretoras e valor total.
+- Mantidas as funções de agrupamento, total único, conversão numérica e PDF de resumo.
+
+O histórico é salvo localmente no perfil do Windows. Excluir um registro do histórico não apaga os arquivos Excel gerados.
