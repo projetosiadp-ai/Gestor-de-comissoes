@@ -3,6 +3,7 @@ import Dashboard from './pages/Dashboard';
 import NewReport from './pages/NewReport';
 import SavedReports from './pages/SavedReports';
 import PdfSummary from './pages/PdfSummary';
+import GeneralReport from './pages/GeneralReport';
 
 export function formatBRL(value) {
   return Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -62,14 +63,16 @@ export default function App() {
     dashboard: 'Visão geral dos relatórios',
     'new-report': 'Importação e geração de relatórios',
     'saved-reports': 'Histórico mensal dos processamentos',
-    'pdf-summary': 'Resumo único das comissões em PDF'
+    'pdf-summary': 'Resumo único das comissões em PDF',
+    'general-report': 'Consolidação de planilhas individuais em relatório geral'
   };
 
   const pageTitles = {
     dashboard: 'Dashboard',
     'new-report': 'Novo relatório',
     'saved-reports': 'Relatórios salvos',
-    'pdf-summary': 'PDF de resumo'
+    'pdf-summary': 'PDF de resumo',
+    'general-report': 'Relatório Geral'
   };
 
   const errorLogsCount = logs.filter(l => l.type === 'error').length;
@@ -106,6 +109,12 @@ export default function App() {
             onClick={() => setActivePage('pdf-summary')}
           >
             <span>▤</span> PDF de resumo
+          </button>
+          <button 
+            className={`nav-item ${activePage === 'general-report' ? 'active' : ''}`} 
+            onClick={() => setActivePage('general-report')}
+          >
+            <span>田</span> Relatório Geral
           </button>
         </nav>
 
@@ -148,6 +157,12 @@ export default function App() {
           )}
           {activePage === 'pdf-summary' && (
             <PdfSummary 
+              addLog={addLog}
+            />
+          )}
+          {activePage === 'general-report' && (
+            <GeneralReport 
+              refreshHistory={refreshHistory}
               addLog={addLog}
             />
           )}

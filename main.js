@@ -96,6 +96,17 @@ ipcMain.handle('select-files', async () => {
   return result.canceled ? [] : result.filePaths;
 });
 
+ipcMain.handle('select-ready-files', async () => {
+  const result = await dialog.showOpenDialog({
+    title: 'Selecione os relatórios consolidados já prontos (.xlsx)',
+    properties: ['openFile', 'multiSelections'],
+    filters: [
+      { name: 'Relatórios consolidados', extensions: ['xlsx'] }
+    ]
+  });
+  return result.canceled ? [] : result.filePaths;
+});
+
 ipcMain.handle('select-summary-files', async () => {
   const result = await dialog.showOpenDialog({
     title: 'Selecione as planilhas prontas para gerar o PDF de resumo',
@@ -113,6 +124,17 @@ ipcMain.handle('select-output-folder', async () => {
     properties: ['openDirectory']
   });
   return result.canceled ? '' : result.filePaths[0];
+});
+
+ipcMain.handle('select-general-files', async () => {
+  const result = await dialog.showOpenDialog({
+    title: 'Selecione as planilhas consolidadas das corretoras (.xlsx)',
+    properties: ['openFile', 'multiSelections'],
+    filters: [
+      { name: 'Planilhas Excel', extensions: ['xlsx'] }
+    ]
+  });
+  return result.canceled ? [] : result.filePaths;
 });
 
 
@@ -1105,3 +1127,430 @@ ipcMain.handle('generate-reports', async (event, { files, outputFolder, sortAlph
 
   return { outputRoot, totalFiles: resultFiles.length, resultFiles, errors, summary, savedReport };
 });
+
+ipcMain.handle('import-ready-reports', async (event, { files, reportMonth }) => {
+  if (!files || files.length === 0) throw new Error('Nenhum arquivo foi selecionado.');
+  const reportInfo = monthReportInfo(reportMonth);
+
+  const errors = [];
+  const summary = [];
+
+  for (const file of files) {
+    try {
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.readFile(file);
+      const sheet = workbook.worksheets[0];
+
+      // Pegar todas as linhas
+      const rows = [];
+      const lastRow = getLastUsedRow(sheet);
+      const lastCol = getLastUsedCol(sheet);
+      for (let r = 1; r <= lastRow; r++) {
+        const row = [];
+        for (let c = 1; c <= lastCol; c++) {
+          row.push(sheet.getCell(r, c).value);
+        }
+        rows.push(row);
+      }
+
+      // Identificar o total consolidado da corretora
+      const { total: totalConsolidado } = findTotalInRows(rows);
+
+      // Identificar corretora a partir do nome do arquivo
+      const corretora = getCorretoraFromFileName(file);
+
+      // Mapear vendedores (blocos de dados na planilha consolidada)
+      // Cada bloco começa com um título que contém o nome do vendedor.
+      // O nome do vendedor pode ser extraído varrendo a coluna A (ou a primeira célula de cada linha).
+      const vendedoresMap = new Map();
+      
+      // Iremos identificar blocos escaneando as células em busca de padrões de vendedores
+      for (let r = 1; r <= lastRow; r++) {
+        const firstCellValue = sheet.getCell(r, 1).value;
+        const firstCellText = decodeHtml(getText(firstCellValue));
+        if (firstCellText && firstCellText.includes(' - ')) {
+          const parsed = parseVendedorCorretora(firstCellValue, file);
+          if (parsed.vendedor && parsed.vendedor !== 'Corretora principal') {
+            // Achar o total correspondente a este bloco de vendedor
+            // Varre as linhas seguintes até achar outro bloco ou até o fim
+            let totalVendedor = 0;
+            for (let nextR = r + 1; nextR <= lastRow; nextR++) {
+              const nextFirstCellValue = sheet.getCell(nextR, 1).value;
+              const nextFirstCellText = decodeHtml(getText(nextFirstCellValue));
+              if (nextFirstCellText && nextFirstCellText.includes(' - ')) {
+                break; // Achou o próximo vendedor
+              }
+              const rowText = decodeHtml(getText(sheet.getCell(nextR, 1).value));
+              const rowNorm = normalizeBaseText(rowText);
+              if (rowNorm.includes('TOTAL DE COMISSOES A PAGAR')) {
+                // Tenta achar o valor na mesma linha
+                let val = parseBrazilCurrency(rowText);
+                if (val === null) {
+                  for (let c = 2; c <= Math.min(lastCol, 6); c++) {
+                    const parsedVal = parseBrazilCurrency(getText(sheet.getCell(nextR, c).value));
+                    if (parsedVal !== null) {
+                      val = parsedVal;
+                      break;
+                    }
+                  }
+                }
+                if (val !== null) {
+                  totalVendedor = val;
+                }
+              }
+            }
+            vendedoresMap.set(parsed.vendedor, (vendedoresMap.get(parsed.vendedor) || 0) + totalVendedor);
+          }
+        }
+      }
+
+      let vendedoresDetalhes = Array.from(vendedoresMap.entries()).map(([nome, total]) => ({
+        nome,
+        total
+      })).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+
+      // Se nenhum vendedor específico foi mapeado, adiciona a corretora como vendedor principal
+      if (vendedoresDetalhes.length === 0) {
+        vendedoresDetalhes = [{ nome: corretora, total: totalConsolidado }];
+      }
+
+      summary.push({
+        corretora,
+        vendedores: vendedoresDetalhes.length,
+        arquivosPrincipais: 0,
+        arquivo: file,
+        vendedoresDetalhes,
+        temCorretoraPrincipal: true,
+        totalConsolidado
+      });
+    } catch (err) {
+      errors.push(`${path.basename(file)}: ${err.message}`);
+    }
+  }
+
+  if (summary.length === 0) {
+    throw new Error('Nenhum relatório pronto válido pôde ser importado.');
+  }
+
+  const totalSellers = summary.reduce((sum, item) => sum + Number(item.vendedores || 0), 0);
+  const totalValue = Math.round((summary.reduce((sum, item) => sum + Number(item.totalConsolidado || 0), 0) + Number.EPSILON) * 100) / 100;
+  
+  // Pegamos a pasta do primeiro arquivo como outputRoot
+  const outputRoot = path.dirname(files[0]);
+
+  const savedReport = {
+    id: `${reportInfo.key}-${Date.now()}`,
+    month: reportInfo.key,
+    label: reportInfo.label,
+    createdAt: new Date().toISOString(),
+    outputRoot,
+    sellers: totalSellers,
+    brokers: summary.length,
+    totalValue,
+    inputFiles: files.length,
+    outputFiles: files.length,
+    errors: errors.length,
+    summary: summary.map(item => ({
+      corretora: item.corretora,
+      vendedores: item.vendedores,
+      totalConsolidado: item.totalConsolidado,
+      arquivo: item.arquivo,
+      vendedoresDetalhes: item.vendedoresDetalhes || []
+    }))
+  };
+
+  const history = readSavedReports();
+  history.unshift(savedReport);
+  writeSavedReports(history.slice(0, 100));
+
+  return { success: true, savedReport, errors };
+});
+
+ipcMain.handle('parse-general-inputs', async (event, { files }) => {
+  if (!files || files.length === 0) throw new Error('Nenhum arquivo foi selecionado.');
+  
+  const blocks = [];
+  const errors = [];
+  
+  for (const file of files) {
+    try {
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.readFile(file);
+      const ws = workbook.worksheets[0];
+      const lastRow = ws.actualRowCount;
+      
+      for (let r = 1; r <= lastRow; r++) {
+        const cellVal = ws.getCell(r, 1).value;
+        const text = decodeHtml(getText(cellVal));
+        if (text && text.includes(' - ') && !text.startsWith('Lote:') && !text.startsWith('Período:') && !text.startsWith('Total de') && !text.startsWith('Comissao_')) {
+          const parsed = parseVendedorCorretora(cellVal, file);
+          if (parsed.corretora && parsed.corretora !== 'Corretora não identificada') {
+            // Find total
+            let total = 0;
+            for (let nextR = r + 1; nextR <= Math.min(lastRow, r + 25); nextR++) {
+              const nextVal = ws.getCell(nextR, 1).value;
+              const nextText = decodeHtml(getText(nextVal));
+              if (nextText.includes('Total de Comissões a pagar:')) {
+                total = parseBrazilCurrency(nextText) || 0;
+                break;
+              }
+            }
+            
+            // Scan headers at r+8
+            const headers = [];
+            const headerRow = r + 8;
+            for (let c = 1; c <= 20; c++) {
+              const hv = ws.getCell(headerRow, c).value;
+              if (hv) headers.push(normalizeBaseText(getText(hv)));
+            }
+            
+            // Detect default category
+            let defaultCategory = 'PF';
+            const normTitle = normalizeBaseText(text);
+            
+            if (normTitle.includes('DIFERENCA') || normTitle.includes('DIFERENCAS') || normTitle.includes('DIF')) {
+              defaultCategory = 'Diferenças';
+            } else if (normTitle.includes('META')) {
+              defaultCategory = 'Meta';
+            } else if (normTitle.includes('DESC TAXA') || normTitle.includes('TAXA')) {
+              defaultCategory = 'Desc Taxa';
+            } else if (normTitle.includes('IR ')) {
+              defaultCategory = 'IR';
+            } else if (normTitle.includes('LANÇAMENTO FUTURO') || normTitle.includes('FUTURO')) {
+              defaultCategory = 'Lançamentos Futuros';
+            } else {
+              const isPF = headers.some(h => h.includes('CPF') || h.includes('RESPONSAVEL') || h.includes('USUARIO') || h.includes('PLANO'));
+              if (!isPF) {
+                defaultCategory = 'PJ';
+              }
+            }
+            
+            blocks.push({
+              filePath: file,
+              fileName: path.basename(file),
+              vendedor: parsed.vendedor,
+              corretora: parsed.corretora,
+              total,
+              category: defaultCategory
+            });
+          }
+        }
+      }
+    } catch (err) {
+      errors.push(`${path.basename(file)}: ${err.message}`);
+    }
+  }
+  
+  return { blocks, errors };
+});
+
+ipcMain.handle('generate-general-report', async (event, { reportMonth, outputFolder, corretorasData }) => {
+  if (!reportMonth) throw new Error('Mês de referência não informado.');
+  if (!outputFolder) throw new Error('Selecione uma pasta de destino.');
+  if (!corretorasData || corretorasData.length === 0) throw new Error('Nenhum dado de corretora fornecido.');
+
+  // Parse Month info
+  const [year, month] = reportMonth.split('-');
+  const date = new Date(year, month - 1, 1);
+  const monthName = new Intl.DateTimeFormat('pt-BR', { month: 'long' }).format(date).toUpperCase();
+  const monthNameCapitalized = monthName.charAt(0) + monthName.slice(1).toLowerCase();
+  
+  const fileName = `${month}_RELATÓRIO GERAL_${monthName}_${year}.xlsx`;
+  const outPath = path.join(outputFolder, fileName);
+
+  const year2d = year.slice(-2);
+  const sheetName = `${monthName} ${year2d}`;
+
+  // Group and merge corretorasData by normalized name
+  const grouped = new Map();
+  for (const c of corretorasData) {
+    const name = normalizarCorretoraParaGrupo(c.corretora);
+    if (!grouped.has(name)) {
+      grouped.set(name, {
+        corretora: name,
+        PF: 0,
+        PJ: 0,
+        Diferenças: 0,
+        Meta: 0,
+        DescTaxa: 0,
+        LancamentosFuturos: 0,
+        IR: 0
+      });
+    }
+    const gr = grouped.get(name);
+    const totalVal = Number(c.totalComissao || 0);
+    const category = c.category || 'PF';
+
+    if (category === 'PF') gr.PF += totalVal;
+    else if (category === 'PJ') gr.PJ += totalVal;
+
+    gr.Diferenças += Number(c.diferencas || 0);
+    gr.Meta += Number(c.meta || 0);
+    gr.DescTaxa += Number(c.descTaxa || 0);
+    gr.LancamentosFuturos += Number(c.lancamentosFuturos || 0);
+    gr.IR += Number(c.ir || 0);
+  }
+
+  const sortedCorretoras = Array.from(grouped.values()).sort((a, b) => a.corretora.localeCompare(b.corretora, 'pt-BR'));
+
+  // Create Workbook
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'glzn-comercial';
+  wb.created = new Date();
+  wb.modified = new Date();
+
+  const ws = wb.addWorksheet(sheetName, { views: [{ showGridLines: true }] });
+
+  // Column Widths
+  const widths = [32, 14, 14, 16, 14, 14, 16, 22, 12, 16, 12, 4, 32, 16];
+  widths.forEach((w, idx) => {
+    ws.getColumn(idx + 1).width = w;
+  });
+
+  // Title Row 7
+  ws.mergeCells('A7:K7');
+  const titleA = ws.getCell('A7');
+  titleA.value = `RELATÓRIO DE COMISSIONAMENTO ${monthNameCapitalized}/${year}`;
+  titleA.font = { bold: true, size: 13, color: { argb: 'FF002B8F' } };
+  titleA.alignment = { vertical: 'middle', horizontal: 'left' };
+
+  ws.mergeCells('M7:N7');
+  const titleM = ws.getCell('M7');
+  titleM.value = 'DADOS DE COMISSÃO E NOTA FISCAL';
+  titleM.font = { bold: true, size: 11, color: { argb: 'FF334155' } };
+  titleM.alignment = { vertical: 'middle', horizontal: 'center' };
+
+  ws.getRow(7).height = 28;
+
+  // Headers Row 8
+  const headers = [
+    "CORRETORA", "PF", "PJ", "DIFERENÇAS", "META", "DESC TAXA", "VALOR TOTAL", 
+    "LANÇAMENTOS FUTUROS", "IR", "A RECEBER", "NF", null, "CORRETORA", "VALOR"
+  ];
+  
+  const headerRow = ws.getRow(8);
+  headerRow.height = 26;
+  headers.forEach((h, idx) => {
+    if (h === null) return;
+    const cell = headerRow.getCell(idx + 1);
+    cell.value = h;
+    cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF062A60' } };
+    cell.alignment = { vertical: 'middle', horizontal: idx === 0 || idx === 12 ? 'left' : 'center', wrapText: false };
+    cell.border = {
+      top: { style: 'thin' }, left: { style: 'thin' },
+      bottom: { style: 'thin' }, right: { style: 'thin' }
+    };
+  });
+
+  // Borders helper
+  const thinBorder = {
+    top: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+    left: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+    bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+    right: { style: 'thin', color: { argb: 'FFE5E7EB' } }
+  };
+
+  let r = 9;
+  for (const cData of sortedCorretoras) {
+    const row = ws.getRow(r);
+    row.height = 20;
+
+    // A: CORRETORA
+    row.getCell(1).value = cData.corretora;
+    row.getCell(1).alignment = { vertical: 'middle', horizontal: 'left' };
+    
+    // B-F: PF, PJ, DIFERENÇAS, META, DESC TAXA
+    row.getCell(2).value = cData.PF;
+    row.getCell(3).value = cData.PJ;
+    row.getCell(4).value = cData.Diferenças;
+    row.getCell(5).value = cData.Meta === 0 ? null : cData.Meta;
+    row.getCell(6).value = cData.DescTaxa === 0 ? null : cData.DescTaxa;
+
+    // G: VALOR TOTAL (Formula: B + C + D + E + F)
+    row.getCell(7).value = { formula: `B${r}+C${r}+D${r}+E${r}+F${r}` };
+
+    // H-I: LANÇAMENTOS FUTUROS, IR
+    row.getCell(8).value = cData.LancamentosFuturos === 0 ? null : cData.LancamentosFuturos;
+    row.getCell(9).value = cData.IR === 0 ? null : cData.IR;
+
+    // J: A RECEBER (Formula: IF(G > 10, G, 0))
+    row.getCell(10).value = { formula: `IF(G${r}>10,G${r},0)` };
+
+    // K: NF
+    row.getCell(11).value = null;
+
+    // M: CORRETORA (resumo)
+    row.getCell(13).value = cData.corretora;
+    row.getCell(13).alignment = { vertical: 'middle', horizontal: 'left' };
+
+    // N: VALOR (resumo, Formula: J)
+    row.getCell(14).value = { formula: `J${r}` };
+
+    // Format all numeric columns
+    [2, 3, 4, 5, 6, 7, 8, 9, 10, 14].forEach(colIdx => {
+      const cell = row.getCell(colIdx);
+      cell.numFmt = '#,##0.00';
+      cell.alignment = { vertical: 'middle', horizontal: 'right' };
+    });
+
+    // Apply borders
+    for (let col = 1; col <= 14; col++) {
+      if (col === 12) continue;
+      row.getCell(col).border = thinBorder;
+    }
+
+    r++;
+  }
+
+  // Row separator
+  r++;
+
+  // TOTALS Row
+  const lastDataRow = r - 2;
+  const totRow = ws.getRow(r);
+  totRow.height = 24;
+
+  totRow.getCell(1).value = "TOTAL ";
+  totRow.getCell(1).font = { bold: true };
+  totRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'left' };
+
+  // Main column sums: B to J
+  const sumCols = [2, 3, 4, 5, 6, 7, 8, 9, 10];
+  const colLetters = ['B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
+  sumCols.forEach((colIdx, idx) => {
+    const letter = colLetters[idx];
+    const cell = totRow.getCell(colIdx);
+    cell.value = { formula: `SUM(${letter}9:${letter}${lastDataRow})` };
+    cell.font = { bold: true };
+    cell.numFmt = '#,##0.00';
+    cell.alignment = { vertical: 'middle', horizontal: 'right' };
+  });
+
+  totRow.getCell(13).value = "TOTAL";
+  totRow.getCell(13).font = { bold: true };
+  totRow.getCell(13).alignment = { vertical: 'middle', horizontal: 'left' };
+
+  totRow.getCell(14).value = { formula: `SUM(N9:N${lastDataRow})` };
+  totRow.getCell(14).font = { bold: true };
+  totRow.getCell(14).numFmt = '#,##0.00';
+  totRow.getCell(14).alignment = { vertical: 'middle', horizontal: 'right' };
+
+  // Totals border & fill
+  const doubleBottomBorder = {
+    top: { style: 'thin', color: { argb: 'FF000000' } },
+    bottom: { style: 'double', color: { argb: 'FF000000' } }
+  };
+  for (let col = 1; col <= 14; col++) {
+    if (col === 12) continue;
+    const cell = totRow.getCell(col);
+    cell.border = doubleBottomBorder;
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2EFFF' } };
+  }
+
+  // Save Workbook
+  await wb.xlsx.writeFile(outPath);
+  return { outPath, fileName };
+});
+
+
