@@ -20,6 +20,40 @@ export default function NewReport({ refreshHistory, addLog }) {
   const [processing, setProcessing] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   
+  // Estados para detecção de duplicidades
+  const [analysis, setAnalysis] = useState([]);
+  const [correctedFiles, setCorrectedFiles] = useState(new Set());
+
+  // Executa análise toda vez que a lista de arquivos mudar
+  useEffect(() => {
+    const analyze = async () => {
+      if (selectedFiles.length > 0 && window.api && window.api.analyzeFiles) {
+        try {
+          const res = await window.api.analyzeFiles(selectedFiles);
+          setAnalysis(res || []);
+        } catch (err) {
+          console.error("Erro ao analisar arquivos:", err);
+        }
+      } else {
+        setAnalysis([]);
+      }
+    };
+    analyze();
+  }, [selectedFiles]);
+
+  // Remove arquivos corrigidos se eles saírem da lista selecionada
+  useEffect(() => {
+    setCorrectedFiles(prev => {
+      const next = new Set();
+      prev.forEach(f => {
+        if (selectedFiles.includes(f)) {
+          next.add(f);
+        }
+      });
+      return next;
+    });
+  }, [selectedFiles]);
+
   const [progress, setProgress] = useState({
     percent: 0,
     message: 'Selecione os arquivos para começar.',
@@ -111,6 +145,22 @@ export default function NewReport({ refreshHistory, addLog }) {
     }
   };
 
+  const uncorrectedDuplicates = analysis.filter(f => f.hasDuplicates && !correctedFiles.has(f.filePath));
+  const correctedDuplicates = analysis.filter(f => f.hasDuplicates && correctedFiles.has(f.filePath));
+
+  const handleCorrectAll = () => {
+    setCorrectedFiles(prev => {
+      const next = new Set(prev);
+      analysis.forEach(f => {
+        if (f.hasDuplicates) {
+          next.add(f.filePath);
+        }
+      });
+      return next;
+    });
+    log('success', 'Duplicidades de comissão corrigidas com sucesso!');
+  };
+
   const monthLabel = (value) => {
     if (!value || !/^\d{4}-\d{2}$/.test(value)) return '';
     const [year, month] = value.split('-').map(Number);
@@ -152,12 +202,17 @@ export default function NewReport({ refreshHistory, addLog }) {
 
     try {
       if (window.api && window.api.generateReports) {
+        const filesToDeduplicate = Array.from(correctedFiles);
+        const filesToSkip = analysis.filter(f => f.hasDuplicates && !correctedFiles.has(f.filePath)).map(f => f.filePath);
+
         const res = await window.api.generateReports({
           files: selectedFiles,
           outputFolder,
           sortAlpha,
           convertNumbers,
-          reportMonth
+          reportMonth,
+          filesToDeduplicate,
+          filesToSkip
         });
 
         setResult(res);
@@ -199,6 +254,74 @@ export default function NewReport({ refreshHistory, addLog }) {
           <p>Informe o mês, arraste as planilhas e gere os arquivos separados por corretora.</p>
         </div>
       </div>
+
+      {uncorrectedDuplicates.length > 0 && (
+        <div style={{
+          background: '#fee2e2',
+          border: '1px solid #fca5a5',
+          borderRadius: '12px',
+          padding: '16px 20px',
+          marginBottom: '20px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '12px',
+          boxShadow: '0 4px 12px rgba(239, 68, 68, 0.05)'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <span style={{ fontSize: '20px' }}>⚠️</span>
+            <strong style={{ color: '#991b1b', fontSize: '15px' }}>Comissão Duplicada Detectada!</strong>
+          </div>
+          <div style={{ color: '#7f1d1d', fontSize: '13px', lineHeight: '1.6' }}>
+            Identificamos vendas PF e PJ simultâneas para as seguintes corretoras. 
+            Elas <strong>não serão geradas</strong> até que a duplicidade seja corrigida para manter o total consolidado correto:
+            <ul style={{ margin: '8px 0 0 20px', padding: 0 }}>
+              {uncorrectedDuplicates.map((file, idx) => (
+                <li key={idx}>
+                  <strong>{file.brokerName || file.fileName}</strong>: {file.duplicateCompanies.join(', ')} (Duplicado em PF e PJ)
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div>
+            <button 
+              onClick={handleCorrectAll}
+              className="primary"
+              style={{
+                background: 'linear-gradient(90deg, #dc2626, #ef4444)',
+                boxShadow: '0 4px 12px rgba(220, 38, 38, 0.2)',
+                border: 'none',
+                padding: '8px 16px',
+                fontSize: '13px',
+                cursor: 'pointer',
+                borderRadius: '6px',
+                fontWeight: 'bold',
+                color: '#fff'
+              }}
+            >
+              Corrigir Duplicidades
+            </button>
+          </div>
+        </div>
+      )}
+
+      {correctedDuplicates.length > 0 && uncorrectedDuplicates.length === 0 && (
+        <div style={{
+          background: '#ecfdf5',
+          border: '1px solid #a7f3d0',
+          borderRadius: '12px',
+          padding: '16px 20px',
+          marginBottom: '20px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px',
+          boxShadow: '0 4px 12px rgba(16, 185, 129, 0.05)'
+        }}>
+          <span style={{ fontSize: '20px' }}>✓</span>
+          <span style={{ color: '#065f46', fontSize: '13px' }}>
+            <strong>Duplicidades corrigidas com sucesso!</strong> Os relatórios serão gerados mantendo apenas os registros PJ e removendo as redundâncias do PF.
+          </span>
+        </div>
+      )}
 
       <section className="panel report-setup">
         <div className="date-column">
@@ -243,9 +366,27 @@ export default function NewReport({ refreshHistory, addLog }) {
         <div id="fileList" className="file-list">
           {selectedFiles.slice(0, 120).map((file, idx) => {
             const name = file.split(/[\\/]/).pop();
+            const fileAnal = analysis.find(f => f.filePath === file);
+            const hasDup = fileAnal?.hasDuplicates;
+            const isCorr = correctedFiles.has(file);
+
+            let chipStyle = {};
+            let statusText = null;
+
+            if (hasDup) {
+              if (isCorr) {
+                chipStyle = { border: '1px solid #10b981', background: '#ecfdf5', color: '#065f46' };
+                statusText = <span style={{ color: '#059669', fontWeight: 'bold', marginLeft: '6px' }}>[Duplicidade corrigida]</span>;
+              } else {
+                chipStyle = { border: '1px solid #ef4444', background: '#fef2f2', color: '#991b1b' };
+                statusText = <span style={{ color: '#dc2626', fontWeight: 'bold', marginLeft: '6px' }}>[Comissão duplicada]</span>;
+              }
+            }
+
             return (
-              <div key={idx} className="file-chip" title={file}>
-                {name}
+              <div key={idx} className="file-chip" style={{ ...chipStyle, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }} title={file}>
+                <span>{name}</span>
+                {statusText}
               </div>
             );
           })}

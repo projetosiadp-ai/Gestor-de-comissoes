@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('api', {
   selectSummaryFiles: () => ipcRenderer.invoke('select-summary-files'),
   selectOutputFolder: () => ipcRenderer.invoke('select-output-folder'),
   generateReports: (payload) => ipcRenderer.invoke('generate-reports', payload),
+  analyzeFiles: (files) => ipcRenderer.invoke('analyze-files', files),
   importReadyReports: (payload) => ipcRenderer.invoke('import-ready-reports', payload),
   generateSummaryPdf: (payload) => ipcRenderer.invoke('generate-summary-pdf', payload),
   parseGeneralInputs: (payload) => ipcRenderer.invoke('parse-general-inputs', payload),

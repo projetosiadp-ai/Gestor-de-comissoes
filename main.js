@@ -335,7 +335,7 @@ function extractHtmlTitle(clean) {
   return '';
 }
 
-function htmlToRows(html, filePath = '') {
+function htmlToRows(html, filePath = '', shouldDeduplicate = false) {
   const clean = html.replace(/\r?\n/g, ' ');
 
   const titulo = extractHtmlTitle(clean) || path.basename(filePath, path.extname(filePath));
@@ -347,34 +347,139 @@ function htmlToRows(html, filePath = '') {
   const lote = loteMatch ? `${decodeHtml(loteMatch[1])} - ${decodeHtml(loteMatch[2])}` : '';
 
   const totalMatch = clean.match(/Total de Comiss[^:]*a pagar:\s*<b[^>]*>\s*([^<]*)/i);
-  const total = decodeHtml(totalMatch ? totalMatch[1] : '');
+  const totalOriginal = decodeHtml(totalMatch ? totalMatch[1] : '');
 
   const rows = [];
   rows[0] = [titulo];
   rows[1] = [`Período: ${periodo}`];
   rows[2] = [`Lote: ${lote}`];
   rows[3] = [];
-  rows[4] = [`Total de Comissões a pagar: ${total}`];
   rows[5] = [];
   rows[6] = [];
   rows[7] = ['Comissao_normal'];
 
-  const tableMatch = clean.match(/<table[\s\S]*?<\/table>/i);
-  if (!tableMatch) return rows;
-
-  const table = tableMatch[0];
-  const trRegex = /<tr[\s\S]*?<\/tr>/gi;
-  const tdRegex = /<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi;
-  let trMatch;
-  while ((trMatch = trRegex.exec(table)) !== null) {
-    const tr = trMatch[0];
-    const row = [];
-    let tdMatch;
-    while ((tdMatch = tdRegex.exec(tr)) !== null) {
-      row.push(decodeHtml(tdMatch[1]));
+  // Extrai todas as linhas <tr> de um bloco de HTML de tabela
+  function parseTableRows(tableHtml) {
+    const result = [];
+    const trRx = /<tr[\s\S]*?<\/tr>/gi;
+    const tdRx = /<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi;
+    let trM;
+    while ((trM = trRx.exec(tableHtml)) !== null) {
+      const cells = [];
+      let tdM;
+      while ((tdM = tdRx.exec(trM[0])) !== null) {
+        cells.push(decodeHtml(tdM[1]));
+      }
+      if (cells.length > 0) result.push(cells);
     }
-    if (row.length > 0) rows.push(row);
+    return result;
   }
+
+  // --- 1. Lê tabela PJ (GRD_ResultadoPJ) para coletar empresas PJ e calcular total PJ ---
+  const pjCompanies = new Set();
+  let pjTotal = 0;
+  let pjAllRows = [];
+  const pjTableMatch = clean.match(/id="GRD_ResultadoPJ"[^>]*>([\s\S]*?)<\/table>/i);
+  if (pjTableMatch) {
+    pjAllRows = parseTableRows(pjTableMatch[1]);
+    // Colunas PJ: [0]Código [1]Empresa [2]Parcela [3]Vencimento [4]Pagamento
+    //             [5]Recebido [6]Regra [7]Comissão [8]Vidas [9]Mensalidade
+    for (let i = 1; i < pjAllRows.length; i++) {
+      const row = pjAllRows[i];
+      if (row.some(c => String(c || '').toUpperCase().includes('TOTAL'))) continue;
+      const empresa = String(row[1] || '').trim();
+      if (!empresa) continue;
+      const comissao = parseBrazilCurrency(String(row[7] || ''));
+      const recebido = parseBrazilCurrency(String(row[5] || ''));
+      if (recebido !== null || comissao !== null) {
+        pjCompanies.add(empresa);
+        if (comissao !== null) pjTotal += comissao;
+      }
+    }
+  }
+
+  // --- 2. Lê tabela PF (GRD_ResultadoPF), removendo empresas que já constam no PJ ---
+  const pfTableMatch = clean.match(/id="GRD_ResultadoPF"[^>]*>([\s\S]*?)<\/table>/i);
+
+  if (!pfTableMatch) {
+    // Fallback: sem ID específico, comportamento antigo (primeira tabela)
+    const tableMatch = clean.match(/<table[\s\S]*?<\/table>/i);
+    if (!tableMatch) {
+      rows[4] = [`Total de Comissões a pagar: ${totalOriginal}`];
+      return rows;
+    }
+    const allRows = parseTableRows(tableMatch[0]);
+    allRows.forEach(r => rows.push(r));
+    rows[4] = [`Total de Comissões a pagar: ${totalOriginal}`];
+    return rows;
+  }
+
+  const pfAllRows = parseTableRows(pfTableMatch[1]);
+  let pfTotal = 0;
+  const pfDataRows = [];
+
+  // pfAllRows[0] = cabeçalho da tabela PF
+  if (pfAllRows[0]) rows.push(pfAllRows[0]);
+
+  // Colunas PF: [0]Código [1]Responsável [2]Usuário [3]Contrato [4]CPF
+  //             [5]Empresa [6]Plano [7]Parcela [8]Vencimento [9]Pagamento
+  //             [10]Regra [11]Recebido [12]Comissão [13]Mensalidade [14]Data de Adesão
+  for (let i = 1; i < pfAllRows.length; i++) {
+    const row = pfAllRows[i];
+    if (row.some(c => String(c || '').toUpperCase().includes('TOTAL'))) continue;
+    const code = String(row[0] || '').trim();
+    if (!code) continue;
+    // Remove linhas de empresas que já constam no bloco PJ (apenas se a dedupilação for solicitada)
+    const empresa = String(row[5] || '').trim();
+    if (shouldDeduplicate && pjCompanies.size > 0 && empresa && pjCompanies.has(empresa)) continue;
+    const comissao = parseBrazilCurrency(String(row[12] || ''));
+    if (comissao !== null) pfTotal += comissao;
+    pfDataRows.push(row);
+  }
+
+  pfDataRows.forEach(r => rows.push(r));
+
+  // --- 3. Adiciona bloco PJ ao final, mapeando para o formato de colunas PF ---
+  // PJ: [0]Código [1]Empresa [2]Parcela [3]Vencimento [4]Pagamento
+  //     [5]Recebido [6]Regra [7]Comissão [8]Vidas [9]Mensalidade
+  // PF: [0]Código [1]Responsável [2]Usuário [3]Contrato [4]CPF
+  //     [5]Empresa [6]Plano [7]Parcela [8]Vencimento [9]Pagamento
+  //     [10]Regra [11]Recebido [12]Comissão [13]Mensalidade [14]Data de Adesão
+  if (pjAllRows.length > 0 && pjCompanies.size > 0) {
+    rows.push([]); // separador
+    rows.push(['PJ']); // rótulo de seção (não é cabeçalho de tabela)
+    for (let i = 1; i < pjAllRows.length; i++) {
+      const row = pjAllRows[i];
+      if (row.some(c => String(c || '').toUpperCase().includes('TOTAL'))) continue;
+      const empresa = String(row[1] || '').trim();
+      if (!empresa) continue;
+      const recebido = parseBrazilCurrency(String(row[5] || ''));
+      const comissao = parseBrazilCurrency(String(row[7] || ''));
+      if (recebido === null && comissao === null) continue;
+      // Mapeia colunas PJ para as posições equivalentes da tabela PF
+      rows.push([
+        row[0],  // [0]  Código
+        row[1],  // [1]  Responsável ← usa Empresa PJ
+        '',      // [2]  Usuário
+        '',      // [3]  Contrato
+        '',      // [4]  CPF
+        row[1],  // [5]  Empresa
+        '',      // [6]  Plano
+        row[2],  // [7]  Parcela
+        row[3],  // [8]  Vencimento
+        row[4],  // [9]  Pagamento
+        row[6],  // [10] Regra
+        row[5],  // [11] Recebido
+        row[7],  // [12] Comissão
+        row[9],  // [13] Mensalidade
+        '',      // [14] Data de Adesão
+      ]);
+    }
+  }
+
+  // --- 4. Total recalculado = PF restante + PJ ---
+  const grandTotal = Math.round((pfTotal + pjTotal + Number.EPSILON) * 100) / 100;
+  rows[4] = [`Total de Comissões a pagar: ${formatNumberBR(grandTotal)}`];
 
   return rows;
 }
@@ -507,15 +612,15 @@ function applyStandardBlockStyle(ws, startRow, lastRow, lastCol) {
   }
 }
 
-function readHtmlInput(filePath) {
+function readHtmlInput(filePath, shouldDeduplicate = false) {
   const buffer = fs.readFileSync(filePath);
   const html = buffer.toString('latin1');
-  const rows = htmlToRows(html, filePath);
+  const rows = htmlToRows(html, filePath, shouldDeduplicate);
   const info = parseVendedorCorretora(rows[0]?.[0], filePath);
   return { filePath, type: 'html-xls', rows, info };
 }
 
-async function readInput(filePath) {
+async function readInput(filePath, shouldDeduplicate = false) {
   const ext = path.extname(filePath).toLowerCase();
   const firstBytes = fs.readFileSync(filePath).slice(0, 20).toString('latin1').toLowerCase();
 
@@ -524,7 +629,7 @@ async function readInput(filePath) {
   }
 
   // Arquivos .xls gerados pelo sistema são HTML disfarçado de Excel.
-  return readHtmlInput(filePath);
+  return readHtmlInput(filePath, shouldDeduplicate);
 }
 
 function getLastUsedRow(sheet) {
@@ -990,7 +1095,93 @@ ipcMain.handle('generate-summary-pdf', async (event, { files, outputFolder }) =>
   return { pdfPath, items, errors, totalGeral: items.reduce((acc, item) => acc + item.total, 0) };
 });
 
-ipcMain.handle('generate-reports', async (event, { files, outputFolder, sortAlpha, convertNumbers, reportMonth }) => {
+async function analyzeFile(filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  const firstBytes = fs.readFileSync(filePath).slice(0, 20).toString('latin1').toLowerCase();
+
+  let brokerName = 'Corretora não identificada';
+  try {
+    const item = await readInput(filePath, false);
+    if (item && item.info) {
+      const corretoraOriginal = item.info.corretora || 'Corretora não identificada';
+      brokerName = normalizarCorretoraParaGrupo(corretoraOriginal);
+    }
+  } catch (err) {
+    console.error('Erro ao ler corretora no analyzeFile:', err);
+  }
+
+  if (ext === '.xlsx' || firstBytes.startsWith('pk')) {
+    return { filePath, fileName: path.basename(filePath), brokerName, hasDuplicates: false, duplicateCompanies: [] };
+  }
+
+  const html = fs.readFileSync(filePath, 'latin1');
+  const clean = html.replace(/\r?\n/g, ' ');
+
+  // Parse PJ table
+  const pjCompanies = new Set();
+  const pjTableMatch = clean.match(/id="GRD_ResultadoPJ"[^>]*>([\s\S]*?)<\/table>/i);
+  if (pjTableMatch) {
+    const trRx = /<tr[\s\S]*?<\/tr>/gi;
+    const tdRx = /<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi;
+    let trM;
+    while ((trM = trRx.exec(pjTableMatch[1])) !== null) {
+      const cells = [];
+      let tdM;
+      while ((tdM = tdRx.exec(trM[0])) !== null) {
+        cells.push(decodeHtml(tdM[1]));
+      }
+      if (cells.length > 0 && !cells.some(c => String(c || '').toUpperCase().includes('TOTAL'))) {
+        const empresa = String(cells[1] || '').trim();
+        if (empresa) pjCompanies.add(empresa);
+      }
+    }
+  }
+
+  // Parse PF table and look for duplicates
+  const duplicateCompanies = new Set();
+  const pfTableMatch = clean.match(/id="GRD_ResultadoPF"[^>]*>([\s\S]*?)<\/table>/i);
+  if (pfTableMatch && pjCompanies.size > 0) {
+    const trRx = /<tr[\s\S]*?<\/tr>/gi;
+    const tdRx = /<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi;
+    let trM;
+    while ((trM = trRx.exec(pfTableMatch[1])) !== null) {
+      const cells = [];
+      let tdM;
+      while ((tdM = tdRx.exec(trM[0])) !== null) {
+        cells.push(decodeHtml(tdM[1]));
+      }
+      if (cells.length > 0 && !cells.some(c => String(c || '').toUpperCase().includes('TOTAL'))) {
+        const empresa = String(cells[5] || '').trim();
+        if (empresa && pjCompanies.has(empresa)) {
+          duplicateCompanies.add(empresa);
+        }
+      }
+    }
+  }
+
+  return {
+    filePath,
+    fileName: path.basename(filePath),
+    brokerName,
+    hasDuplicates: duplicateCompanies.size > 0,
+    duplicateCompanies: Array.from(duplicateCompanies)
+  };
+}
+
+ipcMain.handle('analyze-files', async (event, filePaths) => {
+  const results = [];
+  for (const file of filePaths) {
+    try {
+      const res = await analyzeFile(file);
+      results.push(res);
+    } catch (err) {
+      results.push({ filePath: file, fileName: path.basename(file), brokerName: 'Corretora não identificada', hasDuplicates: false, error: err.message });
+    }
+  }
+  return results;
+});
+
+ipcMain.handle('generate-reports', async (event, { files, outputFolder, sortAlpha, convertNumbers, reportMonth, filesToDeduplicate = [], filesToSkip = [] }) => {
   if (!files || files.length === 0) throw new Error('Nenhum arquivo foi selecionado.');
   if (!outputFolder) throw new Error('Selecione a pasta onde deseja salvar.');
   const reportInfo = monthReportInfo(reportMonth);
@@ -1007,8 +1198,14 @@ ipcMain.handle('generate-reports', async (event, { files, outputFolder, sortAlph
 
   let readCount = 0;
   for (const file of files) {
+    if (filesToSkip && filesToSkip.includes(file)) {
+      readCount++;
+      sendProgress(readCount, files.length, `Pulando arquivo (duplicidade não corrigida): ${path.basename(file)}`, 'leitura');
+      continue;
+    }
     try {
-      const item = await readInput(file);
+      const shouldDeduplicate = filesToDeduplicate && filesToDeduplicate.includes(file);
+      const item = await readInput(file, shouldDeduplicate);
       const corretoraOriginal = item.info.corretora || 'Corretora não identificada';
       const corretora = normalizarCorretoraParaGrupo(corretoraOriginal);
       item.info.corretoraGrupo = corretora;

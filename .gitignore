@@ -4,5 +4,9 @@ dist/
 .agents/
 *.log
 *.xlsx
+*.xls
 .DS_Store
 out/
+stitch_template/
+stitch_dp_office_premium_saas_interface.zip
+backup_juntador_comissoes.zip

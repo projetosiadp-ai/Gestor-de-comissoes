@@ -119,7 +119,7 @@ export default function App() {
         </nav>
 
         <div className="sidebar-footer">
-          <strong>Juntador de Comissões</strong>
+          <strong>DP Office</strong>
           <span>Alpha</span>
           <small>Desenvolvido por<br /><b>glzn-comercial</b></small>
         </div>
@@ -128,7 +128,7 @@ export default function App() {
       <main className="main-area">
         <header className="topbar">
           <div>
-            <strong>Juntador de Comissões Dental Plus</strong>
+            <strong>DP Office</strong>
             <span id="pageSubtitle">{pageSubtitles[activePage]}</span>
           </div>
           <span className="alpha-pill">ALPHA</span>
