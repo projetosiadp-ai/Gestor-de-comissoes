@@ -9,6 +9,8 @@ Modernizar o contabilizador interno de comissões da Dental Plus em programaçã
 
 O aplicativo continuará processando arquivos exportados pelo sistema terceirizado. Não haverá integração direta com esse sistema nesta fase.
 
+O horizonte operacional previsto é de aproximadamente seis meses, de julho de 2026 a janeiro de 2027. A solução deve ser confiável e segura nesse período, sem introduzir infraestrutura ou abstrações cujo benefício existiria apenas numa evolução de longo prazo.
+
 ## 2. Restrições e princípios
 
 - As regras atuais de comissão são imutáveis nesta modernização.
@@ -18,6 +20,7 @@ O aplicativo continuará processando arquivos exportados pelo sistema terceiriza
 - Dados pessoais ou conteúdo das planilhas não serão enviados ao Firebase.
 - Todas as funções atuais permanecerão disponíveis: Dashboard, Novo Relatório, Relatórios Salvos, PDF de Resumo, Relatório Geral e Configuração de Corretoras.
 - A distribuição será feita por executáveis portáteis executados a partir da rede compartilhada.
+- Decisões de arquitetura seguirão o menor desenho que satisfaça os seis meses de operação, priorizando manutenção simples e recuperação de dados.
 
 ## 3. Contexto atual
 
@@ -36,6 +39,8 @@ Será usada refatoração incremental protegida por testes de regressão.
 Antes de mover ou reorganizar a lógica, o aplicativo atual gerará resultados de referência em uma pasta temporária. Os valores, fórmulas, estrutura relevante e conteúdo textual das saídas serão capturados em testes. Cada etapa posterior deverá passar por esses testes.
 
 Não será feita uma reescrita integral das regras de comissão.
+
+Como o uso previsto termina em aproximadamente seis meses, a refatoração será limitada aos pontos necessários para testes, isolamento de processamento, segurança, Firebase, duplicidades e interface. Não será criada uma plataforma genérica, um backend próprio ou uma camada de extensibilidade para integrações futuras.
 
 ## 5. Arquitetura proposta
 
@@ -259,6 +264,8 @@ Serão gerados dois executáveis portáteis:
 
 O x86 usará a última linha do Electron que oferece binários de 32 bits e terá descontinuação planejada até janeiro de 2027. O x64 continuará recebendo atualizações.
 
+Não haverá investimento em uma nova tecnologia para prolongar o suporte x86 após janeiro de 2027, pois essa data coincide com o encerramento previsto do projeto. Se o uso for prorrogado, a continuidade deverá ser reavaliada antes dessa data.
+
 O aplicativo será disponibilizado na rede compartilhada. A execução deverá manter dados de cache e sessão no perfil do usuário, sem gravar credenciais na pasta compartilhada.
 
 ## 14. Testes e critérios de aceitação
@@ -310,6 +317,7 @@ O aplicativo será disponibilizado na rede compartilhada. A execução deverá m
 9. Validar Security Rules e ausência de dados proibidos.
 10. Gerar x86/x64 e realizar homologação.
 11. Disponibilizar na rede e documentar recuperação/backup.
+12. Documentar exportação e arquivamento dos dados ao final dos seis meses.
 
 ## 16. Fora de escopo
 
@@ -319,6 +327,8 @@ O aplicativo será disponibilizado na rede compartilhada. A execução deverá m
 - Upload de planilhas para Firebase Storage.
 - Armazenamento de dados pessoais no Firestore.
 - Automação de tarefas dentro do sistema terceirizado.
+- Arquitetura para uso plurianual, múltiplas empresas ou integrações futuras não solicitadas.
+- Substituição tecnológica do Electron apenas para manter Windows 32 bits depois de janeiro de 2027.
 
 ## 17. Riscos e mitigação
 
@@ -330,6 +340,7 @@ O aplicativo será disponibilizado na rede compartilhada. A execução deverá m
 - **Fim do Electron 32 bits:** distribuição x86 temporária e migração até janeiro de 2027.
 - **Teste insuficiente em x86:** homologação obrigatória em máquina física de 32 bits.
 - **Pasta de rede permissiva:** manter arquivos sensíveis fora da nuvem e recomendar restrição de acesso SMB/Windows aos usuários autorizados.
+- **Prorrogação além dos seis meses:** executar uma revisão de continuidade, dependências e segurança antes de janeiro de 2027.
 
 ## 18. Definição de pronto
 
@@ -344,3 +355,4 @@ O trabalho estará pronto quando:
 - cancelamento e reprocessamento seletivo funcionarem;
 - builds x64 e x86 forem produzidos;
 - documentação de uso, administração, backup e implantação estiver disponível.
+- procedimento de exportação e arquivamento ao encerramento do projeto estiver documentado.
