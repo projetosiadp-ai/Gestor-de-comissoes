@@ -1,18 +1,16 @@
 @echo off
-title Juntador de Comissoes Dental Plus - Alpha
+setlocal
+title Contabilizador de Comissoes Dental Plus
 
-echo Mapeando temporariamente a unidade de rede Z:...
-net use Z: "\\192.168.0.28\Financeiro" /y >nul 2>&1
+set "ARCH=x64"
+if /I "%PROCESSOR_ARCHITECTURE%"=="x86" set "ARCH=ia32"
+set "APP=%~dp0release\Contabilizador de Comissoes Dental Plus-1.0.0-%ARCH%-portable.exe"
 
-if exist Z:\ (
-    echo Iniciando o aplicativo na unidade Z:...
-    Z:
-    cd "Z:\LUCAS\PROJETOS\CONTABILIZADOR DE COMISSÕES\COMISS-O-main"
-    call npm start
-    echo Desconectando a unidade Z:...
-    net use Z: /delete /y >nul 2>&1
-) else (
-    echo [AVISO] Nao foi possivel mapear a unidade Z:. Tentando executar direto...
-    cd /d "%~dp0"
-    call npm start
+if not exist "%APP%" (
+  echo Executavel nao encontrado: %APP%
+  echo Execute Compilar.bat ou consulte LEIA-ME.txt.
+  pause
+  exit /b 1
 )
+
+start "" "%APP%"
