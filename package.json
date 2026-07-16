@@ -1,17 +1,23 @@
 {
-  "name": "juntador-comissoes",
-  "version": "0.0.0-alpha",
-  "description": "Juntador de comissões Dental Plus Alpha com dashboard, arrastar arquivos e histórico mensal",
+  "name": "contabilizador-comissoes-dental-plus",
+  "version": "1.0.0",
+  "description": "Contabilizador de comissões Dental Plus com processamento local e histórico compartilhado",
   "main": "main.js",
   "scripts": {
     "dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .\"",
     "build:frontend": "vite build",
-    "build:app": "npm run build:frontend && electron-builder --win portable",
-    "start": "cross-env NODE_ENV=production electron ."
+    "build:app": "npm run build:frontend && electron-builder --win portable --x64 --ia32",
+    "start": "cross-env NODE_ENV=production electron .",
+    "test": "node \"%INIT_CWD%\\scripts\\run-tests.cjs\"",
+    "test:ui": "node \"%INIT_CWD%\\scripts\\run-tests.cjs\"",
+    "test:all": "npm test && npm run test:ui"
   },
   "dependencies": {
-    "electron": "^31.7.7",
+    "@fontsource/inter": "^5.0.0",
     "exceljs": "^4.4.0",
+    "firebase": "12.16.0",
+    "framer-motion": "^11.0.0",
+    "lucide-react": "^0.400.0",
     "pdfkit": "^0.15.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
@@ -20,22 +26,34 @@
     "@vitejs/plugin-react": "^4.3.1",
     "concurrently": "^8.2.2",
     "cross-env": "^7.0.3",
-    "electron-builder": "^24.13.3",
+    "electron": "43.1.1",
+    "electron-builder": "26.15.3",
     "vite": "^5.4.1",
     "wait-on": "^7.2.0"
   },
   "build": {
     "appId": "com.dentalplus.juntadorcomissoes",
-    "productName": "Juntador de Comissoes",
+    "productName": "Contabilizador de Comissoes Dental Plus",
+    "artifactName": "${productName}-${version}-${arch}-portable.${ext}",
+    "asar": true,
+    "directories": {
+      "output": "release"
+    },
     "win": {
-      "target": "portable"
+      "target": [
+        {
+          "target": "portable",
+          "arch": ["x64", "ia32"]
+        }
+      ]
     },
     "files": [
       "dist/**/*",
       "main.js",
       "preload.js",
+      "src/main/**/*",
       "assets/**/*",
-      "corretoras.json",
+      "config/**/*",
       "package.json"
     ]
   }

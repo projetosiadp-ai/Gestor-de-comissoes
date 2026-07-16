@@ -1,0 +1,87 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function currentUser() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isApproved() {
+      return signedIn()
+        && currentUser().status == 'approved'
+        && currentUser().role in ['admin', 'operator'];
+    }
+
+    function isAdmin() {
+      return isApproved() && currentUser().role == 'admin';
+    }
+
+    function safeReportFields() {
+      return [
+        'id', 'month', 'label', 'createdAt', 'createdByUid',
+        'sellers', 'brokers', 'totalValue', 'inputFiles', 'outputFiles', 'errors',
+        'version', 'batchFingerprint', 'fileFingerprints', 'outputRoot',
+        'deletedAt', 'deletedByUid'
+      ];
+    }
+
+    function validNewReport() {
+      return request.resource.data.keys().hasOnly(safeReportFields())
+        && request.resource.data.keys().hasAll(safeReportFields())
+        && request.resource.data.createdByUid == request.auth.uid
+        && request.resource.data.id is string
+        && request.resource.data.month is string
+        && request.resource.data.createdAt is string
+        && request.resource.data.batchFingerprint is string
+        && request.resource.data.batchFingerprint.size() == 64
+        && request.resource.data.fileFingerprints is list
+        && request.resource.data.fileFingerprints.size() <= 500
+        && request.resource.data.deletedAt == null
+        && request.resource.data.deletedByUid == null;
+    }
+
+    match /users/{userId} {
+      allow create: if signedIn()
+        && request.auth.uid == userId
+        && request.resource.data.keys().hasOnly(['displayName', 'email', 'role', 'status', 'createdAt'])
+        && request.resource.data.role == 'operator'
+        && request.resource.data.status == 'pending'
+        && request.resource.data.email == request.auth.token.email;
+      allow read: if signedIn() && (request.auth.uid == userId || isAdmin());
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['displayName', 'role', 'status', 'approvedAt', 'approvedByUid']);
+      allow delete: if false;
+    }
+
+    match /reports/{reportId} {
+      allow read: if isApproved();
+      allow create: if isApproved() && validNewReport() && request.resource.data.id == reportId;
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['deletedAt', 'deletedByUid']);
+      allow delete: if isAdmin();
+    }
+
+    match /audit/{entryId} {
+      allow read: if isAdmin();
+      allow create: if isApproved()
+        && request.resource.data.keys().hasOnly([
+          'action', 'targetId', 'actorUid', 'actorEmail', 'createdAt', 'details'
+        ])
+        && request.resource.data.actorUid == request.auth.uid
+        && request.resource.data.details.keys().hasOnly([
+          'month', 'version', 'batchFingerprint', 'deletedAt'
+        ]);
+      allow update, delete: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
