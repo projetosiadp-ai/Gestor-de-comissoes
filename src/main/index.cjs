@@ -41,6 +41,7 @@ const { createWindowFactory } = require('./app/create-window.cjs');
 const { registerSystemIpc } = require('./ipc/register-system-ipc.cjs');
 const { registerHistoryIpc } = require('./ipc/register-history-ipc.cjs');
 const { registerDuplicatesIpc } = require('./ipc/register-duplicates-ipc.cjs');
+const { registerReportIpc } = require('./ipc/register-report-ipc.cjs');
 const {
   readInput,
   readDuplicateRecords,
@@ -344,7 +345,7 @@ async function createSummaryPdf(items, errors, outputFolder) {
   return outPath;
 }
 
-ipcMain.handle('generate-summary-pdf', async (event, { files, outputFolder }) => {
+async function handleGenerateSummaryPdf(event, { files, outputFolder }) {
   files = assertInputFiles(files);
   outputFolder = assertLocalPath(outputFolder, { label: 'a pasta de destino' });
 
@@ -388,9 +389,9 @@ ipcMain.handle('generate-summary-pdf', async (event, { files, outputFolder }) =>
   sendProgress(files.length, files.length, 'PDF gerado com sucesso!', 'concluido');
 
   return { pdfPath, items, errors, totalGeral: items.reduce((acc, item) => acc + item.total, 0) };
-});
+}
 
-ipcMain.handle('generate-reports', async (event, { files, outputFolder, sortAlpha, convertNumbers, reportMonth, jobId }) => {
+async function handleGenerateReports(event, { files, outputFolder, sortAlpha, convertNumbers, reportMonth, jobId }) {
   jobId = jobId || `legacy-${crypto.randomUUID()}`;
   processingJobs.start(jobId);
   try {
@@ -541,9 +542,9 @@ ipcMain.handle('generate-reports', async (event, { files, outputFolder, sortAlph
   } finally {
     processingJobs.finish(jobId);
   }
-});
+}
 
-ipcMain.handle('import-ready-reports', async (event, { files, reportMonth }) => {
+async function handleImportReadyReports(event, { files, reportMonth }) {
   files = assertInputFiles(files, { extensions: ['.xlsx'] });
   const fingerprints = await fingerprintFiles(files);
   const reportInfo = monthReportInfo(reportMonth);
@@ -683,9 +684,9 @@ ipcMain.handle('import-ready-reports', async (event, { files, reportMonth }) => 
   writeSavedReports(history.slice(0, 100));
 
   return { success: true, savedReport, errors };
-});
+}
 
-ipcMain.handle('parse-general-inputs', async (event, { files }) => {
+async function handleParseGeneralInputs(event, { files }) {
   files = assertInputFiles(files, { extensions: ['.xlsx'] });
   
   const blocks = [];
@@ -761,9 +762,9 @@ ipcMain.handle('parse-general-inputs', async (event, { files }) => {
   }
   
   return { blocks, errors };
-});
+}
 
-ipcMain.handle('generate-general-report', async (event, { reportMonth, outputFolder, corretorasData }) => {
+async function handleGenerateGeneralReport(event, { reportMonth, outputFolder, corretorasData }) {
   if (!reportMonth) throw new Error('Mês de referência não informado.');
   outputFolder = assertLocalPath(outputFolder, { label: 'a pasta de destino' });
   if (!corretorasData || corretorasData.length === 0) throw new Error('Nenhum dado de corretora fornecido.');
@@ -971,13 +972,26 @@ ipcMain.handle('generate-general-report', async (event, { reportMonth, outputFol
   // Save Workbook
   await writeFileAtomically(outPath, temporaryPath => wb.xlsx.writeFile(temporaryPath));
   return { outPath, fileName };
-});
+}
 
-ipcMain.handle('get-corretoras-config', async () => {
+async function handleGetCorretorasConfig() {
   return CORRETORAS_CONFIG;
-});
+}
 
-ipcMain.handle('save-corretoras-config', async (_, newConfig) => {
+async function handleSaveCorretorasConfig(_, newConfig) {
   CORRETORAS_CONFIG = corretorasRepository.save(newConfig);
   return true;
+}
+
+registerReportIpc({
+  ipcMain,
+  handlers: {
+    generateSummaryPdf: handleGenerateSummaryPdf,
+    generateReports: handleGenerateReports,
+    importReadyReports: handleImportReadyReports,
+    parseGeneralInputs: handleParseGeneralInputs,
+    generateGeneralReport: handleGenerateGeneralReport,
+    getCorretorasConfig: handleGetCorretorasConfig,
+    saveCorretorasConfig: handleSaveCorretorasConfig
+  }
 });

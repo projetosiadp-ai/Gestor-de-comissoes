@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const { registerSystemIpc } = require('../../src/main/ipc/register-system-ipc.cjs');
 const { registerHistoryIpc } = require('../../src/main/ipc/register-history-ipc.cjs');
 const { registerDuplicatesIpc } = require('../../src/main/ipc/register-duplicates-ipc.cjs');
+const { registerReportIpc } = require('../../src/main/ipc/register-report-ipc.cjs');
 
 function ipcRecorder() {
   const handlers = new Map();
@@ -48,4 +49,28 @@ test('history and duplicate registrars keep their bounded channel sets', () => {
     readSavedReports: () => [], path: require('node:path')
   });
   assert.deepEqual([...duplicates.handlers.keys()], ['analyze-duplicates']);
+});
+
+test('report registrar owns report generation, import, parsing and configuration channels', () => {
+  const { handlers, ipcMain } = ipcRecorder();
+  const noop = async () => null;
+
+  registerReportIpc({
+    ipcMain,
+    handlers: {
+      generateSummaryPdf: noop,
+      generateReports: noop,
+      importReadyReports: noop,
+      parseGeneralInputs: noop,
+      generateGeneralReport: noop,
+      getCorretorasConfig: noop,
+      saveCorretorasConfig: noop
+    }
+  });
+
+  assert.deepEqual([...handlers.keys()].sort(), [
+    'generate-summary-pdf', 'generate-reports', 'import-ready-reports',
+    'parse-general-inputs', 'generate-general-report',
+    'get-corretoras-config', 'save-corretoras-config'
+  ].sort());
 });
