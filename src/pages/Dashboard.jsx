@@ -2,7 +2,8 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   TrendingUp, Building, Users, DollarSign, FolderOpen, 
-  ChevronRight, ChevronDown, Trash2, Calendar, FileText, ChevronLeft
+  ChevronRight, ChevronDown, Trash2, Calendar, FileText, ChevronLeft,
+  FileDown, Table, History, PlusCircle
 } from 'lucide-react';
 import { formatBRL } from '../App';
 
@@ -684,7 +685,7 @@ function MonthComparison({ reports }) {
    • Substituídos ícones Unicode por lucide-react
    • Animações suaves de expandir/recolher
  ───────────────────────────────────────────────*/
-function ReportCard({ report, onDelete }) {
+function ReportCard({ report, onDelete, isAdmin, onTrashReport }) {
   const [expanded, setExpanded] = useState(false);
   const [expandedBroker, setExpandedBroker] = useState(null);
 
@@ -696,12 +697,10 @@ function ReportCard({ report, onDelete }) {
   };
 
   const handleDelete = async () => {
-    if (!confirm('Excluir este registro do histórico? Os arquivos gerados não serão apagados.')) return;
+    if (!confirm('Mover este registro para a lixeira por 30 dias? Os arquivos gerados não serão apagados.')) return;
     try {
-      if (window.api?.deleteSavedReport) {
-        await window.api.deleteSavedReport(report.id);
-        onDelete();
-      }
+      await onTrashReport(report.id);
+      onDelete();
     } catch (err) { alert('Erro ao excluir: ' + err.message); }
   };
 
@@ -720,7 +719,7 @@ function ReportCard({ report, onDelete }) {
           <div className="report-card-stats">
             <span className="rc-stat">
               <span className="rc-stat-icon blue" style={{ background: 'transparent' }}><Building size={14} /></span>
-              {summary.length} corretora{summary.length !== 1 ? 's' : ''}
+              {Number(report.brokers ?? summary.length)} corretora{Number(report.brokers ?? summary.length) !== 1 ? 's' : ''}
             </span>
             <span className="rc-stat">
               <span className="rc-stat-icon cyan" style={{ background: 'transparent' }}><Users size={14} /></span>
@@ -744,7 +743,7 @@ function ReportCard({ report, onDelete }) {
             {expanded ? <ChevronDown size={12} style={{ transform: 'rotate(180deg)' }} /> : <ChevronDown size={12} />}
             Detalhes
           </button>
-          <button className="ghost danger" onClick={handleDelete} title="Excluir"><Trash2 size={12} /></button>
+          {isAdmin && <button className="ghost danger" onClick={handleDelete} title="Mover para a lixeira"><Trash2 size={12} /></button>}
         </div>
       </div>
 
@@ -842,7 +841,7 @@ function ReportCard({ report, onDelete }) {
    • Grid de 4 KPIs no topo com Deltas comparativos
    • Layout de 2 colunas responsivo
  ───────────────────────────────────────────────*/
-export default function Dashboard({ savedReports, onNavigate, refreshHistory }) {
+export default function Dashboard({ savedReports, onNavigate, refreshHistory, isAdmin, onTrashReport }) {
   const handleDelete = () => refreshHistory();
 
   // Ordena os relatórios por data de forma decrescente
@@ -860,8 +859,8 @@ export default function Dashboard({ savedReports, onNavigate, refreshHistory }) 
     const prevComissoes = prev ? Number(prev.totalValue || 0) : 0;
     const diffComissoes = prevComissoes ? ((comissoes - prevComissoes) / prevComissoes) * 100 : null;
 
-    const corretoras = latest.summary?.length || 0;
-    const prevCorretoras = prev ? (prev.summary?.length || 0) : 0;
+    const corretoras = Number(latest.brokers ?? latest.summary?.length ?? 0);
+    const prevCorretoras = prev ? Number(prev.brokers ?? prev.summary?.length ?? 0) : 0;
     const diffCorretoras = prev ? corretoras - prevCorretoras : null;
 
     const vendedores = Number(latest.sellers || 0);
@@ -891,6 +890,13 @@ export default function Dashboard({ savedReports, onNavigate, refreshHistory }) 
         <button className="primary" onClick={() => onNavigate('new-report')}>
           ＋ Novo relatório
         </button>
+      </div>
+
+      <div className="quick-actions" aria-label="Ações rápidas">
+        <button onClick={() => onNavigate('new-report')}><PlusCircle size={18} /><span><b>Processar lote</b><small>Analisar e gerar relatórios</small></span></button>
+        <button onClick={() => onNavigate('saved-reports')}><History size={18} /><span><b>Abrir histórico</b><small>Consultar versões anteriores</small></span></button>
+        <button onClick={() => onNavigate('pdf-summary')}><FileDown size={18} /><span><b>Gerar resumo PDF</b><small>Compilar planilhas prontas</small></span></button>
+        <button onClick={() => onNavigate('general-report')}><Table size={18} /><span><b>Relatório geral</b><small>Consolidar corretoras</small></span></button>
       </div>
 
       {/* ── Cards de KPI no Topo ── */}
@@ -989,6 +995,8 @@ export default function Dashboard({ savedReports, onNavigate, refreshHistory }) 
                     key={report.id}
                     report={report}
                     onDelete={handleDelete}
+                    isAdmin={isAdmin}
+                    onTrashReport={onTrashReport}
                   />
                 ))}
               </div>

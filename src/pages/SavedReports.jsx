@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { formatBRL } from '../App';
 
-function HistoryTable({ reports, onDelete }) {
+function HistoryTable({ reports, onDelete, isAdmin }) {
   if (!reports || !reports.length) {
     return <div className="empty-state">Nenhum relatório salvo ainda.</div>;
   }
@@ -41,7 +41,7 @@ function HistoryTable({ reports, onDelete }) {
             <td>
               <div className="history-row-actions">
                 <button onClick={() => handleOpenPath(report.outputRoot)}>Abrir pasta</button>
-                <button className="delete" onClick={() => onDelete(report.id)}>Excluir</button>
+                {isAdmin && <button className="delete" onClick={() => onDelete(report.id)}>Lixeira</button>}
               </div>
             </td>
           </tr>
@@ -51,7 +51,7 @@ function HistoryTable({ reports, onDelete }) {
   );
 }
 
-export default function SavedReports({ savedReports, refreshHistory, onNavigate }) {
+export default function SavedReports({ savedReports, refreshHistory, onNavigate, isAdmin, onTrashReport, onReportCreated }) {
   const [activeTabId, setActiveTabId] = useState(null);
   
   // States para importação de relatório pronto
@@ -73,12 +73,10 @@ export default function SavedReports({ savedReports, refreshHistory, onNavigate 
   }, [savedReports, activeTabId]);
 
   const handleDeleteReport = async (id) => {
-    if (!confirm('Excluir este registro do histórico? Os arquivos gerados não serão apagados.')) return;
+    if (!confirm('Mover este registro para a lixeira por 30 dias? Os arquivos gerados não serão apagados.')) return;
     try {
-      if (window.api && window.api.deleteSavedReport) {
-        await window.api.deleteSavedReport(id);
-        refreshHistory();
-      }
+      await onTrashReport(id);
+      refreshHistory();
     } catch (err) {
       alert('Erro ao deletar registro: ' + err.message);
     }
@@ -139,6 +137,7 @@ export default function SavedReports({ savedReports, refreshHistory, onNavigate 
           setSelectedReadyFiles([]);
           setShowImportForm(false);
           refreshHistory();
+          onReportCreated?.(res.savedReport);
         }
         if (res.errors && res.errors.length > 0) {
           alert('Alguns relatórios apresentaram erro na importação:\n' + res.errors.join('\n'));
@@ -276,7 +275,7 @@ export default function SavedReports({ savedReports, refreshHistory, onNavigate 
           {savedReports.length === 0 ? (
             <div className="empty-state">Nenhum relatório salvo ainda.</div>
           ) : (
-            <HistoryTable reports={filteredReports} onDelete={handleDeleteReport} />
+            <HistoryTable reports={filteredReports} onDelete={handleDeleteReport} isAdmin={isAdmin} />
           )}
         </div>
       </section>

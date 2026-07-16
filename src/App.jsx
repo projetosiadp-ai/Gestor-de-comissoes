@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Sun, Moon, LayoutDashboard, PlusCircle, History, 
   FileDown, Table, Settings, Terminal, X, Copy, Check, Trash2,
-  ChevronLeft, ChevronRight, AlertCircle, Info, CheckCircle2
+  ChevronLeft, ChevronRight, AlertCircle, Info, CheckCircle2, UserCog, ArchiveRestore
 } from 'lucide-react';
 import Dashboard from './pages/Dashboard';
 import NewReport from './pages/NewReport';
@@ -11,6 +11,13 @@ import SavedReports from './pages/SavedReports';
 import PdfSummary from './pages/PdfSummary';
 import GeneralReport from './pages/GeneralReport';
 import ConfigCorretoras from './pages/ConfigCorretoras';
+import AuthScreen from './auth/AuthScreen';
+import { useAuth } from './auth/AuthContext';
+import { subscribeReports, syncReport } from './services/cloudReports';
+import { trashReport as trashCloudReport } from './services/cloudReports';
+import UserManagement from './pages/UserManagement';
+import Trash from './pages/Trash';
+import dentalPlusLogo from '../assets/logo.png';
 
 export function formatBRL(value) {
   return Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -26,8 +33,11 @@ export function escapeHtml(value) {
 }
 
 export default function App() {
+  const session = useAuth();
   const [activePage, setActivePage] = useState('dashboard');
-  const [savedReports, setSavedReports] = useState([]);
+  const [localReports, setLocalReports] = useState([]);
+  const [cloudReports, setCloudReports] = useState([]);
+  const [cloudState, setCloudState] = useState({ fromCache: true, hasPendingWrites: false });
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   
@@ -61,6 +71,12 @@ export default function App() {
     setLogs(prev => [...prev, { id: Date.now() + Math.random(), timestamp, type, message }]);
   }, []);
 
+  const savedReports = useMemo(() => {
+    const merged = new Map(localReports.map(report => [report.id, report]));
+    cloudReports.forEach(report => merged.set(report.id, { ...merged.get(report.id), ...report }));
+    return Array.from(merged.values()).filter(report => !report.deletedAt);
+  }, [localReports, cloudReports]);
+
   // Auto-scroll inside logs console
   useEffect(() => {
     if (consoleBodyRef.current) {
@@ -73,7 +89,7 @@ export default function App() {
     try {
       if (window.api && window.api.listSavedReports) {
         const list = await window.api.listSavedReports();
-        setSavedReports(list || []);
+        setLocalReports(list || []);
       }
     } catch (err) {
       console.error('Erro ao listar relatórios salvos:', err);
@@ -87,13 +103,42 @@ export default function App() {
     refreshHistory();
   }, [refreshHistory]);
 
+  useEffect(() => {
+    if (!session.configured || !session.user || session.profile?.status !== 'approved') {
+      setCloudReports([]);
+      return undefined;
+    }
+    return subscribeReports((reports, metadata) => {
+      setCloudReports(reports);
+      setCloudState(metadata);
+    }, error => addLog('error', `Falha ao sincronizar histórico: ${error.message}`));
+  }, [session.configured, session.user, session.profile?.status, addLog]);
+
+  const handleReportCreated = useCallback(report => {
+    if (!session.configured || !session.user || session.profile?.status !== 'approved') return;
+    syncReport(report, session.user)
+      .then(() => addLog('success', 'Metadados do relatório sincronizados com segurança.'))
+      .catch(error => addLog('error', `Sincronização pendente: ${error.message}`));
+  }, [session.configured, session.user, session.profile?.status, addLog]);
+
+  const handleTrashReport = useCallback(async reportId => {
+    if (!session.isAdmin) throw new Error('Somente Administradores podem mover relatórios para a lixeira.');
+    await window.api.deleteSavedReport(reportId);
+    if (session.configured && cloudReports.some(report => report.id === reportId)) {
+      await trashCloudReport(reportId, session.user);
+    }
+    await refreshHistory();
+  }, [session.isAdmin, session.configured, session.user, cloudReports, refreshHistory]);
+
   const pageSubtitles = {
     dashboard: 'Visão geral dos relatórios',
     'new-report': 'Importação e geração de relatórios',
     'saved-reports': 'Histórico mensal dos processamentos',
     'pdf-summary': 'Resumo único das comissões em PDF',
     'general-report': 'Consolidação de planilhas individuais em relatório geral',
-    'config-corretoras': 'Mapeamentos e apelidos das corretoras'
+    'config-corretoras': 'Mapeamentos e apelidos das corretoras',
+    'users': 'Contas, perfis e aprovações',
+    'trash': 'Registros excluídos nos últimos 30 dias'
   };
 
   const navItems = [
@@ -102,8 +147,10 @@ export default function App() {
     { id: 'saved-reports', label: 'Relatórios salvos', icon: History, tooltip: 'Relatórios salvos' },
     { id: 'pdf-summary', label: 'PDF de resumo', icon: FileDown, tooltip: 'PDF de resumo' },
     { id: 'general-report', label: 'Relatório Geral', icon: Table, tooltip: 'Relatório Geral' },
-    { id: 'config-corretoras', label: 'Configurar corretoras', icon: Settings, tooltip: 'Configurar corretoras' }
-  ];
+    { id: 'config-corretoras', label: 'Configurar corretoras', icon: Settings, tooltip: 'Configurar corretoras', adminOnly: true },
+    { id: 'users', label: 'Usuários', icon: UserCog, tooltip: 'Usuários e acessos', adminOnly: true },
+    { id: 'trash', label: 'Lixeira', icon: ArchiveRestore, tooltip: 'Lixeira de 30 dias', adminOnly: true }
+  ].filter(item => !item.adminOnly || session.isAdmin);
 
   // Filters and limits logs to last 150 items to prevent DOM lag (virtualization-like)
   const filteredLogs = useMemo(() => {
@@ -123,13 +170,17 @@ export default function App() {
     });
   }, [logs]);
 
+  if (session.loading || (session.configured && (!session.user || session.profile?.status !== 'approved'))) {
+    return <AuthScreen />;
+  }
+
   return (
     <div className="app-shell">
       <aside className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}>
         <div className="sidebar-brand" style={{ position: 'relative', width: '100%' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
             {!sidebarCollapsed ? (
-              <img src="assets/logo.png" alt="Dental Plus" style={{ width: '135px' }} />
+              <img src={dentalPlusLogo} alt="Dental Plus" style={{ width: '135px' }} />
             ) : (
               <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#fff', display: 'grid', placeItems: 'center', fontWeight: '900', color: '#062a60', fontSize: '15px' }}>D</div>
             )}
@@ -190,8 +241,8 @@ export default function App() {
         </nav>
 
         <div className="sidebar-footer">
-          <strong>Juntador de Comissões</strong>
-          <span>Alpha</span>
+          <strong>Contabilizador de Comissões</strong>
+          <span>Uso interno · v1.0</span>
           <small>Desenvolvido por<br /><b>glzn-comercial</b></small>
         </div>
       </aside>
@@ -199,10 +250,15 @@ export default function App() {
       <main className="main-area">
         <header className="topbar">
           <div>
-            <strong>Juntador de Comissões Dental Plus</strong>
+            <strong>Contabilizador de Comissões Dental Plus</strong>
             <span id="pageSubtitle">{pageSubtitles[activePage]}</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <span className={`sync-pill ${session.configured && !cloudState.fromCache ? 'online' : 'offline'}`}>
+              {session.configured
+                ? cloudState.hasPendingWrites ? 'Sincronizando' : cloudState.fromCache ? 'Offline' : 'Sincronizado'
+                : 'Modo local'}
+            </span>
             <button 
               onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
               style={{
@@ -222,7 +278,10 @@ export default function App() {
               {theme === 'light' ? <Moon size={14} /> : <Sun size={14} />}
               {theme === 'light' ? 'Escuro' : 'Claro'}
             </button>
-            <span className="alpha-pill">ALPHA</span>
+            <span className="alpha-pill">v1.0</span>
+            <button className="user-pill" onClick={session.configured ? session.logout : undefined} title={session.configured ? 'Sair da conta' : 'Firebase não configurado'}>
+              {session.profile?.displayName || session.user?.email || 'Usuário'} · {session.profile?.role === 'admin' ? 'Administrador' : 'Operador'}
+            </button>
           </div>
         </header>
 
@@ -232,12 +291,16 @@ export default function App() {
               savedReports={savedReports} 
               onNavigate={setActivePage} 
               refreshHistory={refreshHistory}
+              isAdmin={session.isAdmin}
+              onTrashReport={handleTrashReport}
             />
           )}
           {activePage === 'new-report' && (
             <NewReport 
               refreshHistory={refreshHistory}
               addLog={addLog}
+              onReportCreated={handleReportCreated}
+              knownReports={savedReports}
             />
           )}
           {activePage === 'saved-reports' && (
@@ -245,6 +308,9 @@ export default function App() {
               savedReports={savedReports} 
               refreshHistory={refreshHistory}
               onNavigate={setActivePage}
+              isAdmin={session.isAdmin}
+              onTrashReport={handleTrashReport}
+              onReportCreated={handleReportCreated}
             />
           )}
           {activePage === 'pdf-summary' && (
@@ -263,6 +329,8 @@ export default function App() {
               addLog={addLog}
             />
           )}
+          {activePage === 'users' && <UserManagement />}
+          {activePage === 'trash' && <Trash cloudReports={cloudReports} refreshHistory={refreshHistory} />}
         </div>
       </main>
 

@@ -1,12 +1,30 @@
 const Module = require('node:module');
 const path = require('node:path');
 
-function loadCurrentMain({ userDataPath }) {
+function loadCurrentMain({ userDataPath, autoReady = false } = {}) {
   const handlers = new Map();
+  const windows = [];
   const originalLoad = Module._load;
+  class BrowserWindowMock {
+    static getAllWindows() { return windows; }
+    constructor(options) {
+      this.options = options;
+      this.loaded = null;
+      this.windowOpenHandler = null;
+      this.webContentsListeners = new Map();
+      this.webContents = {
+        openDevTools() {},
+        setWindowOpenHandler: (handler) => { this.windowOpenHandler = handler; },
+        on: (event, handler) => { this.webContentsListeners.set(event, handler); }
+      };
+      windows.push(this);
+    }
+    loadURL(url) { this.loaded = { type: 'url', value: url }; }
+    loadFile(filePath) { this.loaded = { type: 'file', value: filePath }; }
+  }
   const electronMock = {
     app: {
-      whenReady: () => ({ then() {} }),
+      whenReady: () => ({ then(callback) { if (autoReady) callback(); } }),
       on() {},
       quit() {},
       getPath(name) {
@@ -14,7 +32,7 @@ function loadCurrentMain({ userDataPath }) {
         return userDataPath;
       }
     },
-    BrowserWindow: class BrowserWindow { static getAllWindows() { return []; } },
+    BrowserWindow: BrowserWindowMock,
     ipcMain: { handle: (channel, handler) => handlers.set(channel, handler) },
     dialog: { showOpenDialog: async () => ({ canceled: true, filePaths: [] }) },
     shell: { openPath: async () => '' }
@@ -32,7 +50,7 @@ function loadCurrentMain({ userDataPath }) {
   } finally {
     Module._load = originalLoad;
   }
-  return { handlers };
+  return { handlers, windows };
 }
 
 module.exports = { loadCurrentMain };

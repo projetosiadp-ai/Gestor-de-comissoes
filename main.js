@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const ExcelJS = require('exceljs');
 const PDFDocument = require('pdfkit');
 const {
@@ -19,6 +20,25 @@ const {
   extractHtmlCommissionRecords,
   recordsFromRows
 } = require('./src/main/core/duplicate-analysis.cjs');
+const { assertLocalPath, assertInputFiles } = require('./src/main/core/ipc-validation.cjs');
+const {
+  fingerprintFiles,
+  resolveVersionedFile,
+  reserveVersionedFolder,
+  writeFileAtomically
+} = require('./src/main/core/process-safety.cjs');
+const {
+  activeReports,
+  trashedReports,
+  trashReport,
+  restoreReport,
+  purgeExpiredReports,
+  readHistoryFile,
+  writeHistoryFile
+} = require('./src/main/core/history-store.cjs');
+const { ProcessingJobs } = require('./src/main/core/processing-jobs.cjs');
+
+const processingJobs = new ProcessingJobs();
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -30,8 +50,17 @@ function createWindow() {
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      sandbox: true,
+      webSecurity: true,
+      allowRunningInsecureContent: false
     }
+  });
+
+  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  win.webContents.on('will-navigate', (event, url) => {
+    const isDevelopmentPage = process.env.NODE_ENV === 'development' && url.startsWith('http://localhost:5173');
+    if (!isDevelopmentPage) event.preventDefault();
   });
 
   if (process.env.NODE_ENV === 'development') {
@@ -52,21 +81,48 @@ function getHistoryPath() {
   return path.join(app.getPath('userData'), 'relatorios-salvos.json');
 }
 
-function readSavedReports() {
+function getSettingsPath() {
+  return path.join(app.getPath('userData'), 'configuracoes.json');
+}
+
+function getDefaultOutputFolder() {
+  const baseFolder = app.isPackaged
+    ? (process.env.PORTABLE_EXECUTABLE_DIR || path.dirname(process.execPath))
+    : app.getPath('userData');
+  return path.join(baseFolder, 'Relatorios');
+}
+
+function readAppSettings() {
   try {
-    const historyPath = getHistoryPath();
-    if (!fs.existsSync(historyPath)) return [];
-    const parsed = JSON.parse(fs.readFileSync(historyPath, 'utf8'));
-    return Array.isArray(parsed) ? parsed : [];
+    const settingsPath = getSettingsPath();
+    const saved = fs.existsSync(settingsPath) ? JSON.parse(fs.readFileSync(settingsPath, 'utf8')) : {};
+    const defaultOutputFolder = saved.defaultOutputFolder || getDefaultOutputFolder();
+    fs.mkdirSync(defaultOutputFolder, { recursive: true });
+    return { defaultOutputFolder };
   } catch (_) {
-    return [];
+    return { defaultOutputFolder: '' };
   }
 }
 
-function writeSavedReports(items) {
+ipcMain.handle('get-app-settings', async () => readAppSettings());
+ipcMain.handle('save-app-settings', async (_, settings = {}) => {
+  const defaultOutputFolder = assertLocalPath(settings.defaultOutputFolder, { label: 'a pasta padrão' });
+  const settingsPath = getSettingsPath();
+  fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+  fs.writeFileSync(settingsPath, JSON.stringify({ defaultOutputFolder }, null, 2), 'utf8');
+  return { defaultOutputFolder };
+});
+
+function readSavedReports() {
   const historyPath = getHistoryPath();
-  fs.mkdirSync(path.dirname(historyPath), { recursive: true });
-  fs.writeFileSync(historyPath, JSON.stringify(items, null, 2), 'utf8');
+  const items = readHistoryFile(historyPath);
+  const retained = purgeExpiredReports(items);
+  if (retained.length !== items.length) writeHistoryFile(historyPath, retained);
+  return retained;
+}
+
+function writeSavedReports(items) {
+  writeHistoryFile(getHistoryPath(), items);
 }
 
 function monthReportInfo(reportMonth) {
@@ -85,18 +141,29 @@ function monthReportInfo(reportMonth) {
 }
 
 ipcMain.handle('list-saved-reports', async () => {
-  return readSavedReports().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  return activeReports(readSavedReports()).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 });
 
 ipcMain.handle('delete-saved-report', async (_, id) => {
-  const next = readSavedReports().filter(item => item.id !== id);
+  const next = trashReport(readSavedReports(), String(id || ''));
   writeSavedReports(next);
   return true;
 });
 
+ipcMain.handle('list-trashed-reports', async () => {
+  return trashedReports(readSavedReports()).sort((a, b) => new Date(b.deletedAt) - new Date(a.deletedAt));
+});
+
+ipcMain.handle('restore-saved-report', async (_, id) => {
+  writeSavedReports(restoreReport(readSavedReports(), String(id || '')));
+  return true;
+});
+
+ipcMain.handle('cancel-processing', async (_, jobId) => processingJobs.cancel(String(jobId || '')));
+
 ipcMain.handle('open-path', async (_, targetPath) => {
-  if (!targetPath) return false;
-  const error = await shell.openPath(targetPath);
+  const safePath = assertLocalPath(targetPath, { label: 'abrir' });
+  const error = await shell.openPath(safePath);
   if (error) throw new Error(error);
   return true;
 });
@@ -155,7 +222,11 @@ ipcMain.handle('select-general-files', async () => {
 
 
 function loadCorretorasConfig() {
-  const configPath = path.join(__dirname, 'corretoras.json');
+  const operationalRoot = app.isPackaged
+    ? (process.env.PORTABLE_EXECUTABLE_DIR || app.getPath('userData'))
+    : app.getPath('userData');
+  const configPath = path.join(operationalRoot, 'DadosCompartilhados', 'corretoras.json');
+  const bundledConfigPath = path.join(__dirname, 'corretoras.json');
   const defaultConfig = {
     "AS PRIME": [
       "AS PRIME",
@@ -177,6 +248,11 @@ function loadCorretorasConfig() {
 
   try {
     if (!fs.existsSync(configPath)) {
+      fs.mkdirSync(path.dirname(configPath), { recursive: true });
+      if (fs.existsSync(bundledConfigPath)) {
+        fs.copyFileSync(bundledConfigPath, configPath);
+        return JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      }
       fs.writeFileSync(configPath, JSON.stringify(defaultConfig, null, 2), 'utf8');
       return defaultConfig;
     }
@@ -443,13 +519,12 @@ async function readDuplicateRecords(filePath) {
 }
 
 ipcMain.handle('analyze-duplicates', async (_, { files } = {}) => {
-  if (!Array.isArray(files) || files.length === 0) {
-    throw new Error('Selecione ao menos um arquivo para analisar duplicidades.');
-  }
+  const safeFiles = assertInputFiles(files);
+  const fingerprints = await fingerprintFiles(safeFiles);
 
   const records = [];
   const errors = [];
-  for (const filePath of files) {
+  for (const filePath of safeFiles) {
     try {
       records.push(...await readDuplicateRecords(filePath));
     } catch (error) {
@@ -457,7 +532,23 @@ ipcMain.handle('analyze-duplicates', async (_, { files } = {}) => {
     }
   }
 
-  return { ...analyzeDuplicateRecords(records), errors };
+  const previousProcesses = readSavedReports()
+    .filter(item => item.batchFingerprint === fingerprints.batchFingerprint)
+    .map(item => ({
+      id: item.id,
+      label: item.label,
+      createdAt: item.createdAt,
+      version: item.version || 1,
+      outputRoot: item.outputRoot
+    }));
+  const analysis = analyzeDuplicateRecords(records);
+  return {
+    ...analysis,
+    errors,
+    batchFingerprint: fingerprints.batchFingerprint,
+    previousProcesses,
+    requiresConfirmation: analysis.requiresConfirmation || previousProcesses.length > 0
+  };
 });
 
 function getLastUsedRow(sheet) {
@@ -768,11 +859,11 @@ async function createSummaryPdf(items, errors, outputFolder) {
 
   const now = new Date();
   const stamp = now.toISOString().slice(0, 10).replace(/-/g, '');
-  const outPath = path.join(outputRoot, `Resumo_Comissoes_${stamp}.pdf`);
+  const { outputPath: outPath } = resolveVersionedFile(path.join(outputRoot, `Resumo_Comissoes_${stamp}.pdf`));
 
-  await new Promise((resolve, reject) => {
+  await writeFileAtomically(outPath, temporaryPath => new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: 'A4', margin: 48 });
-    const stream = fs.createWriteStream(outPath);
+    const stream = fs.createWriteStream(temporaryPath);
     doc.pipe(stream);
 
     const logoPath = path.join(__dirname, 'assets', 'logo.png');
@@ -850,14 +941,14 @@ async function createSummaryPdf(items, errors, outputFolder) {
     doc.end();
     stream.on('finish', resolve);
     stream.on('error', reject);
-  });
+  }));
 
   return outPath;
 }
 
 ipcMain.handle('generate-summary-pdf', async (event, { files, outputFolder }) => {
-  if (!files || files.length === 0) throw new Error('Nenhuma planilha foi selecionada.');
-  if (!outputFolder) throw new Error('Selecione a pasta onde deseja salvar o PDF.');
+  files = assertInputFiles(files);
+  outputFolder = assertLocalPath(outputFolder, { label: 'a pasta de destino' });
 
   const sendProgress = (current, total, message, phase = 'resumo') => {
     const percent = total ? Math.round((current / total) * 100) : 0;
@@ -901,10 +992,14 @@ ipcMain.handle('generate-summary-pdf', async (event, { files, outputFolder }) =>
   return { pdfPath, items, errors, totalGeral: items.reduce((acc, item) => acc + item.total, 0) };
 });
 
-ipcMain.handle('generate-reports', async (event, { files, outputFolder, sortAlpha, convertNumbers, reportMonth }) => {
-  if (!files || files.length === 0) throw new Error('Nenhum arquivo foi selecionado.');
-  if (!outputFolder) throw new Error('Selecione a pasta onde deseja salvar.');
+ipcMain.handle('generate-reports', async (event, { files, outputFolder, sortAlpha, convertNumbers, reportMonth, jobId }) => {
+  jobId = jobId || `legacy-${crypto.randomUUID()}`;
+  processingJobs.start(jobId);
+  try {
+  files = assertInputFiles(files);
+  outputFolder = assertLocalPath(outputFolder, { label: 'a pasta de destino' });
   const reportInfo = monthReportInfo(reportMonth);
+  const fingerprints = await fingerprintFiles(files);
 
   const sendProgress = (current, total, message, phase = 'processando') => {
     const percent = total ? Math.round((current / total) * 100) : 0;
@@ -918,6 +1013,8 @@ ipcMain.handle('generate-reports', async (event, { files, outputFolder, sortAlph
 
   let readCount = 0;
   for (const file of files) {
+    await new Promise(resolve => setImmediate(resolve));
+    processingJobs.assertActive(jobId);
     try {
       const item = await readInput(file);
       const corretoraOriginal = item.info.corretora || 'Corretora não identificada';
@@ -935,8 +1032,8 @@ ipcMain.handle('generate-reports', async (event, { files, outputFolder, sortAlph
 
   if (grouped.size === 0) throw new Error('Nenhum arquivo válido foi lido.');
 
-  const outputRoot = path.join(outputFolder, reportInfo.folderName);
-  fs.mkdirSync(outputRoot, { recursive: true });
+  const outputReservation = reserveVersionedFolder(path.join(outputFolder, reportInfo.folderName));
+  const outputRoot = outputReservation.outputPath;
 
   const resultFiles = [];
   const summary = [];
@@ -946,6 +1043,8 @@ ipcMain.handle('generate-reports', async (event, { files, outputFolder, sortAlph
 
   let generated = 0;
   for (const corretora of corretoras) {
+    await new Promise(resolve => setImmediate(resolve));
+    processingJobs.assertActive(jobId);
     let items = grouped.get(corretora);
 
     // Arquivo da corretora principal sempre primeiro; depois os vendedores.
@@ -975,7 +1074,8 @@ ipcMain.handle('generate-reports', async (event, { files, outputFolder, sortAlph
     const totalConsolidado = consolidation.total;
 
     const outPath = path.join(outputRoot, safeFileName(corretora) + '.xlsx');
-    await wbOut.xlsx.writeFile(outPath);
+    await writeFileAtomically(outPath, temporaryPath => wbOut.xlsx.writeFile(temporaryPath));
+    processingJobs.assertActive(jobId);
     resultFiles.push(outPath);
 
     const vendedoresReais = items.filter(i => !i.info.isPrincipalCorretora);
@@ -1017,6 +1117,9 @@ ipcMain.handle('generate-reports', async (event, { files, outputFolder, sortAlph
     label: reportInfo.label,
     createdAt: new Date().toISOString(),
     outputRoot,
+    version: outputReservation.version,
+    batchFingerprint: fingerprints.batchFingerprint,
+    fileFingerprints: fingerprints.fileFingerprints,
     sellers: totalSellers,
     brokers: summary.length,
     totalValue,
@@ -1037,10 +1140,14 @@ ipcMain.handle('generate-reports', async (event, { files, outputFolder, sortAlph
   writeSavedReports(history.slice(0, 100));
 
   return { outputRoot, totalFiles: resultFiles.length, resultFiles, errors, summary, savedReport };
+  } finally {
+    processingJobs.finish(jobId);
+  }
 });
 
 ipcMain.handle('import-ready-reports', async (event, { files, reportMonth }) => {
-  if (!files || files.length === 0) throw new Error('Nenhum arquivo foi selecionado.');
+  files = assertInputFiles(files, { extensions: ['.xlsx'] });
+  const fingerprints = await fingerprintFiles(files);
   const reportInfo = monthReportInfo(reportMonth);
 
   const errors = [];
@@ -1155,6 +1262,9 @@ ipcMain.handle('import-ready-reports', async (event, { files, reportMonth }) => 
     label: reportInfo.label,
     createdAt: new Date().toISOString(),
     outputRoot,
+    version: 1,
+    batchFingerprint: fingerprints.batchFingerprint,
+    fileFingerprints: fingerprints.fileFingerprints,
     sellers: totalSellers,
     brokers: summary.length,
     totalValue,
@@ -1178,7 +1288,7 @@ ipcMain.handle('import-ready-reports', async (event, { files, reportMonth }) => 
 });
 
 ipcMain.handle('parse-general-inputs', async (event, { files }) => {
-  if (!files || files.length === 0) throw new Error('Nenhum arquivo foi selecionado.');
+  files = assertInputFiles(files, { extensions: ['.xlsx'] });
   
   const blocks = [];
   const errors = [];
@@ -1257,7 +1367,7 @@ ipcMain.handle('parse-general-inputs', async (event, { files }) => {
 
 ipcMain.handle('generate-general-report', async (event, { reportMonth, outputFolder, corretorasData }) => {
   if (!reportMonth) throw new Error('Mês de referência não informado.');
-  if (!outputFolder) throw new Error('Selecione uma pasta de destino.');
+  outputFolder = assertLocalPath(outputFolder, { label: 'a pasta de destino' });
   if (!corretorasData || corretorasData.length === 0) throw new Error('Nenhum dado de corretora fornecido.');
 
   // Parse Month info
@@ -1266,8 +1376,9 @@ ipcMain.handle('generate-general-report', async (event, { reportMonth, outputFol
   const monthName = new Intl.DateTimeFormat('pt-BR', { month: 'long' }).format(date).toUpperCase();
   const monthNameCapitalized = monthName.charAt(0) + monthName.slice(1).toLowerCase();
   
-  const fileName = `${month}_RELATÓRIO GERAL_${monthName}_${year}.xlsx`;
-  const outPath = path.join(outputFolder, fileName);
+  const baseFileName = `${month}_RELATÓRIO GERAL_${monthName}_${year}.xlsx`;
+  const { outputPath: outPath } = resolveVersionedFile(path.join(outputFolder, baseFileName));
+  const fileName = path.basename(outPath);
 
   const year2d = year.slice(-2);
   const sheetName = `${monthName} ${year2d}`;
@@ -1460,7 +1571,7 @@ ipcMain.handle('generate-general-report', async (event, { reportMonth, outputFol
   }
 
   // Save Workbook
-  await wb.xlsx.writeFile(outPath);
+  await writeFileAtomically(outPath, temporaryPath => wb.xlsx.writeFile(temporaryPath));
   return { outPath, fileName };
 });
 
@@ -1469,8 +1580,22 @@ ipcMain.handle('get-corretoras-config', async () => {
 });
 
 ipcMain.handle('save-corretoras-config', async (_, newConfig) => {
-  const configPath = path.join(__dirname, 'corretoras.json');
-  fs.writeFileSync(configPath, JSON.stringify(newConfig, null, 2), 'utf8');
-  CORRETORAS_CONFIG = newConfig;
+  if (!newConfig || typeof newConfig !== 'object' || Array.isArray(newConfig)) {
+    throw new Error('Configuração de corretoras inválida.');
+  }
+  const entries = Object.entries(newConfig);
+  if (entries.length > 100) throw new Error('A configuração excede o limite permitido.');
+  const sanitized = Object.fromEntries(entries.map(([name, aliases]) => {
+    const safeName = String(name || '').trim().slice(0, 160);
+    if (!safeName || !Array.isArray(aliases)) throw new Error('Mapeamento de corretora inválido.');
+    return [safeName, aliases.map(alias => String(alias || '').trim().slice(0, 200)).filter(Boolean).slice(0, 100)];
+  }));
+  const operationalRoot = app.isPackaged
+    ? (process.env.PORTABLE_EXECUTABLE_DIR || app.getPath('userData'))
+    : app.getPath('userData');
+  const configPath = path.join(operationalRoot, 'DadosCompartilhados', 'corretoras.json');
+  fs.mkdirSync(path.dirname(configPath), { recursive: true });
+  fs.writeFileSync(configPath, JSON.stringify(sanitized, null, 2), 'utf8');
+  CORRETORAS_CONFIG = sanitized;
   return true;
 });

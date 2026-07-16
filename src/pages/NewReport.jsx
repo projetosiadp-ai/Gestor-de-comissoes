@@ -15,7 +15,7 @@ function formatBytes(bytes) {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 }
 
-export default function NewReport({ refreshHistory, addLog }) {
+export default function NewReport({ refreshHistory, addLog, onReportCreated, knownReports = [] }) {
   const log = (type, msg) => {
     if (addLog) addLog(type, msg);
   };
@@ -50,11 +50,18 @@ export default function NewReport({ refreshHistory, addLog }) {
   const [analyzingDuplicates, setAnalyzingDuplicates] = useState(false);
   const [duplicateAnalysis, setDuplicateAnalysis] = useState(null);
   const [duplicateReviewAccepted, setDuplicateReviewAccepted] = useState(false);
+  const activeJobRef = React.useRef(null);
 
   useEffect(() => {
     setDuplicateAnalysis(null);
     setDuplicateReviewAccepted(false);
   }, [selectedFiles]);
+
+  useEffect(() => {
+    window.api?.getAppSettings?.().then(settings => {
+      if (settings?.defaultOutputFolder) setOutputFolder(settings.defaultOutputFolder);
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (window.api && window.api.onProgress) {
@@ -148,6 +155,7 @@ export default function NewReport({ refreshHistory, addLog }) {
       const folder = await window.api.selectOutputFolder();
       if (folder) {
         setOutputFolder(folder);
+        window.api.saveAppSettings?.({ defaultOutputFolder: folder }).catch(() => {});
         log('info', `Pasta de destino selecionada: ${folder}`);
       }
     }
@@ -205,9 +213,25 @@ export default function NewReport({ refreshHistory, addLog }) {
     setAnalyzingDuplicates(true);
     setStatus({ type: 'loading', message: 'Analisando o lote inteiro localmente...' });
     try {
-      const analysis = await window.api.analyzeDuplicates({
+      const localAnalysis = await window.api.analyzeDuplicates({
         files: selectedFiles.map(file => file.path)
       });
+      const previousById = new Map((localAnalysis.previousProcesses || []).map(item => [item.id, item]));
+      knownReports
+        .filter(report => report.batchFingerprint === localAnalysis.batchFingerprint)
+        .forEach(report => previousById.set(report.id, {
+          id: report.id,
+          label: report.label,
+          createdAt: report.createdAt,
+          version: report.version || 1,
+          outputRoot: report.outputRoot
+        }));
+      const previousProcesses = Array.from(previousById.values());
+      const analysis = {
+        ...localAnalysis,
+        previousProcesses,
+        requiresConfirmation: localAnalysis.requiresConfirmation || previousProcesses.length > 0
+      };
       setDuplicateAnalysis(analysis);
 
       if (analysis.errors?.length) {
@@ -228,11 +252,11 @@ export default function NewReport({ refreshHistory, addLog }) {
 
     try {
       const analysis = await analyzeSelectedBatch();
-      const findings = analysis.confirmed.length + analysis.possible.length;
+      const findings = analysis.confirmed.length + analysis.possible.length + analysis.previousProcesses.length;
       setStatus({
         type: findings ? 'error' : 'success',
         message: findings
-          ? 'Foram encontradas duplicidades. Revise os grupos abaixo antes de processar.'
+          ? 'Foram encontradas duplicidades ou um processamento anterior. Revise os avisos abaixo antes de continuar.'
           : 'Análise concluída: nenhuma duplicidade identificada no lote.'
       });
       log(findings ? 'error' : 'success', `Análise local concluída: ${analysis.totalRecords} registro(s), ${analysis.confirmed.length} grupo(s) confirmado(s) e ${analysis.possible.length} possível(is).`);
@@ -277,6 +301,8 @@ export default function NewReport({ refreshHistory, addLog }) {
       return;
     }
 
+    const jobId = globalThis.crypto?.randomUUID?.() || `job-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    activeJobRef.current = jobId;
     setProcessing(true);
     setResult(null);
     setProgress({
@@ -300,7 +326,8 @@ export default function NewReport({ refreshHistory, addLog }) {
           outputFolder,
           sortAlpha,
           convertNumbers,
-          reportMonth
+          reportMonth,
+          jobId
         });
 
         setResult(res);
@@ -317,6 +344,7 @@ export default function NewReport({ refreshHistory, addLog }) {
         }
 
         refreshHistory();
+        onReportCreated?.(res.savedReport);
       }
     } catch (err) {
       setStatus({
@@ -325,7 +353,17 @@ export default function NewReport({ refreshHistory, addLog }) {
       });
       log('error', `Erro crítico no processamento: ${err.message}`);
     } finally {
+      activeJobRef.current = null;
       setProcessing(false);
+    }
+  };
+
+  const handleCancel = async () => {
+    if (!activeJobRef.current || !window.api?.cancelProcessing) return;
+    const requested = await window.api.cancelProcessing(activeJobRef.current);
+    if (requested) {
+      setStatus({ type: 'loading', message: 'Cancelamento solicitado. Finalizando a etapa segura atual...' });
+      log('info', 'Cancelamento solicitado pelo usuário.');
     }
   };
 
@@ -473,7 +511,20 @@ export default function NewReport({ refreshHistory, addLog }) {
               <span className={duplicateAnalysis.possible.length ? 'duplicate-warning' : ''}>
                 <b>{duplicateAnalysis.possible.length}</b> grupos possíveis
               </span>
+              <span className={duplicateAnalysis.previousProcesses.length ? 'duplicate-warning' : ''}>
+                <b>{duplicateAnalysis.previousProcesses.length}</b> processamento(s) anterior(es)
+              </span>
             </div>
+
+            {duplicateAnalysis.previousProcesses?.map(previous => (
+              <div className="duplicate-previous" key={previous.id}>
+                <ShieldAlert size={16} />
+                <span>
+                  Este mesmo lote já foi processado em <b>{new Date(previous.createdAt).toLocaleString('pt-BR')}</b>
+                  {' '}({previous.label}, versão {previous.version}). Uma nova execução será salva em outra pasta identificada, sem sobrescrever a anterior.
+                </span>
+              </div>
+            ))}
 
             {duplicateAnalysis.errors?.map((error, index) => (
               <div className="duplicate-error" key={`${error.fileName}-${index}`}>
@@ -520,7 +571,7 @@ export default function NewReport({ refreshHistory, addLog }) {
                   onChange={(event) => setDuplicateReviewAccepted(event.target.checked)}
                 />
                 <ShieldAlert size={18} />
-                <span>Revisei as ocorrências acima e confirmo que o processamento deve continuar sem excluir nem alterar nenhuma linha.</span>
+                <span>Revisei as ocorrências e os processamentos anteriores. Confirmo a continuidade sem excluir ou alterar linhas e aceito a criação de uma nova versão identificada.</span>
               </label>
             )}
 
@@ -588,8 +639,14 @@ export default function NewReport({ refreshHistory, addLog }) {
           disabled={processing || analyzingDuplicates}
           style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', justifyContent: 'center' }}
         >
-          <Play size={16} /> Processar arquivos
+          {status.type === 'error' ? <RefreshCw size={16} /> : <Play size={16} />}
+          {status.type === 'error' ? 'Tentar novamente' : 'Processar arquivos'}
         </button>
+        {processing && (
+          <button className="secondary danger" onClick={handleCancel}>
+            <X size={16} /> Cancelar com segurança
+          </button>
+        )}
       </div>
 
       {status.type && (

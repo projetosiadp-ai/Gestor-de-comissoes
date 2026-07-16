@@ -27,6 +27,12 @@ export default function PdfSummary({ addLog }) {
   const [result, setResult] = useState(null);
 
   useEffect(() => {
+    window.api?.getAppSettings?.().then(settings => {
+      if (settings?.defaultOutputFolder) setOutputFolder(settings.defaultOutputFolder);
+    }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
     if (window.api && window.api.onSummaryProgress) {
       window.api.onSummaryProgress((data) => {
         const labels = { 
@@ -75,6 +81,7 @@ export default function PdfSummary({ addLog }) {
       const folder = await window.api.selectOutputFolder();
       if (folder) {
         setOutputFolder(folder);
+        window.api.saveAppSettings?.({ defaultOutputFolder: folder }).catch(() => {});
         log('info', `Pasta de destino para PDF selecionada: ${folder}`);
       }
     }

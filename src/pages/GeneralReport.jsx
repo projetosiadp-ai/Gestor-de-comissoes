@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   FileSpreadsheet, Upload, Download, RefreshCw, FolderOpen, 
   CheckCircle, AlertCircle, Play, Sparkles, Building, Users
@@ -22,6 +22,12 @@ export default function GeneralReport({ refreshHistory, addLog }) {
   const [generating, setGenerating] = useState(false);
   const [status, setStatus] = useState({ type: '', message: '' });
   const [dragOver, setDragOver] = useState(false);
+
+  useEffect(() => {
+    window.api?.getAppSettings?.().then(settings => {
+      if (settings?.defaultOutputFolder) setOutputFolder(settings.defaultOutputFolder);
+    }).catch(() => {});
+  }, []);
 
   const handleSelectFiles = async () => {
     if (window.api && window.api.selectGeneralFiles) {
@@ -115,6 +121,7 @@ export default function GeneralReport({ refreshHistory, addLog }) {
       const folder = await window.api.selectOutputFolder();
       if (folder) {
         setOutputFolder(folder);
+        window.api.saveAppSettings?.({ defaultOutputFolder: folder }).catch(() => {});
         log('info', `Pasta de destino selecionada: ${folder}`);
       }
     }
