@@ -40,6 +40,9 @@ const { ProcessingJobs } = require('./core/processing-jobs.cjs');
 const { createAppSettings } = require('./config/app-settings.cjs');
 const { createCorretorasRepository } = require('./config/corretoras.cjs');
 const { createWindowFactory } = require('./app/create-window.cjs');
+const { registerSystemIpc } = require('./ipc/register-system-ipc.cjs');
+const { registerHistoryIpc } = require('./ipc/register-history-ipc.cjs');
+const { registerDuplicatesIpc } = require('./ipc/register-duplicates-ipc.cjs');
 
 const APP_ROOT = path.resolve(__dirname, '..', '..');
 
@@ -65,9 +68,6 @@ app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) creat
 function getHistoryPath() {
   return path.join(app.getPath('userData'), 'relatorios-salvos.json');
 }
-
-ipcMain.handle('get-app-settings', async () => appSettings.get());
-ipcMain.handle('save-app-settings', async (_, settings = {}) => appSettings.save(settings));
 
 function readSavedReports() {
   const historyPath = getHistoryPath();
@@ -96,84 +96,12 @@ function monthReportInfo(reportMonth) {
   };
 }
 
-ipcMain.handle('list-saved-reports', async () => {
-  return activeReports(readSavedReports()).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+registerSystemIpc({
+  ipcMain, dialog, shell, settings: appSettings, processingJobs, assertLocalPath
 });
-
-ipcMain.handle('delete-saved-report', async (_, id) => {
-  const next = trashReport(readSavedReports(), String(id || ''));
-  writeSavedReports(next);
-  return true;
-});
-
-ipcMain.handle('list-trashed-reports', async () => {
-  return trashedReports(readSavedReports()).sort((a, b) => new Date(b.deletedAt) - new Date(a.deletedAt));
-});
-
-ipcMain.handle('restore-saved-report', async (_, id) => {
-  writeSavedReports(restoreReport(readSavedReports(), String(id || '')));
-  return true;
-});
-
-ipcMain.handle('cancel-processing', async (_, jobId) => processingJobs.cancel(String(jobId || '')));
-
-ipcMain.handle('open-path', async (_, targetPath) => {
-  const safePath = assertLocalPath(targetPath, { label: 'abrir' });
-  const error = await shell.openPath(safePath);
-  if (error) throw new Error(error);
-  return true;
-});
-
-ipcMain.handle('select-files', async () => {
-  const result = await dialog.showOpenDialog({
-    title: 'Selecione as planilhas de comissão',
-    properties: ['openFile', 'multiSelections'],
-    filters: [
-      { name: 'Planilhas/HTML do sistema', extensions: ['xls', 'xlsx', 'html', 'htm'] }
-    ]
-  });
-  return result.canceled ? [] : result.filePaths;
-});
-
-ipcMain.handle('select-ready-files', async () => {
-  const result = await dialog.showOpenDialog({
-    title: 'Selecione os relatórios consolidados já prontos (.xlsx)',
-    properties: ['openFile', 'multiSelections'],
-    filters: [
-      { name: 'Relatórios consolidados', extensions: ['xlsx'] }
-    ]
-  });
-  return result.canceled ? [] : result.filePaths;
-});
-
-ipcMain.handle('select-summary-files', async () => {
-  const result = await dialog.showOpenDialog({
-    title: 'Selecione as planilhas prontas para gerar o PDF de resumo',
-    properties: ['openFile', 'multiSelections'],
-    filters: [
-      { name: 'Planilhas de comissão', extensions: ['xls', 'xlsx', 'html', 'htm'] }
-    ]
-  });
-  return result.canceled ? [] : result.filePaths;
-});
-
-ipcMain.handle('select-output-folder', async () => {
-  const result = await dialog.showOpenDialog({
-    title: 'Selecione onde salvar os relatórios gerados',
-    properties: ['openDirectory']
-  });
-  return result.canceled ? '' : result.filePaths[0];
-});
-
-ipcMain.handle('select-general-files', async () => {
-  const result = await dialog.showOpenDialog({
-    title: 'Selecione as planilhas consolidadas das corretoras (.xlsx)',
-    properties: ['openFile', 'multiSelections'],
-    filters: [
-      { name: 'Planilhas Excel', extensions: ['xlsx'] }
-    ]
-  });
-  return result.canceled ? [] : result.filePaths;
+registerHistoryIpc({
+  ipcMain, readSavedReports, writeSavedReports,
+  activeReports, trashedReports, trashReport, restoreReport
 });
 
 
@@ -432,37 +360,9 @@ async function readDuplicateRecords(filePath) {
   }));
 }
 
-ipcMain.handle('analyze-duplicates', async (_, { files } = {}) => {
-  const safeFiles = assertInputFiles(files);
-  const fingerprints = await fingerprintFiles(safeFiles);
-
-  const records = [];
-  const errors = [];
-  for (const filePath of safeFiles) {
-    try {
-      records.push(...await readDuplicateRecords(filePath));
-    } catch (error) {
-      errors.push({ fileName: path.basename(String(filePath || '')), message: error.message });
-    }
-  }
-
-  const previousProcesses = readSavedReports()
-    .filter(item => item.batchFingerprint === fingerprints.batchFingerprint)
-    .map(item => ({
-      id: item.id,
-      label: item.label,
-      createdAt: item.createdAt,
-      version: item.version || 1,
-      outputRoot: item.outputRoot
-    }));
-  const analysis = analyzeDuplicateRecords(records);
-  return {
-    ...analysis,
-    errors,
-    batchFingerprint: fingerprints.batchFingerprint,
-    previousProcesses,
-    requiresConfirmation: analysis.requiresConfirmation || previousProcesses.length > 0
-  };
+registerDuplicatesIpc({
+  ipcMain, assertInputFiles, fingerprintFiles, readDuplicateRecords,
+  analyzeDuplicateRecords, readSavedReports, path
 });
 
 function getLastUsedRow(sheet) {
