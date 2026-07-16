@@ -2,7 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import '@fontsource/inter';
-import './index.css';
+import './styles/app.css';
 import { AuthProvider } from './auth/AuthContext';
 
 const savedTheme = localStorage.getItem('theme');

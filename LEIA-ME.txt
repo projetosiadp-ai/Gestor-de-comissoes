@@ -31,3 +31,4 @@ COMPILAÇÃO PARA DESENVOLVEDORES
 1. Instale Node.js e execute npm ci.
 2. Use Compilar.bat ou npm run build:app.
 3. Os portáteis x64 e ia32 serão criados em release.
+4. Consulte docs\ARQUITETURA.md para conhecer a organização e os limites de cada módulo.
