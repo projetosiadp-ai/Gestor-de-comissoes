@@ -1,9 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  Sun, Moon, LayoutDashboard, PlusCircle, History, 
-  FileDown, Table, Settings, Terminal, X, Copy, Check, Trash2,
-  ChevronLeft, ChevronRight, AlertCircle, Info, CheckCircle2, UserCog, ArchiveRestore, ScrollText
+  LayoutDashboard, PlusCircle, History, FileDown, Table, Settings,
+  UserCog, ArchiveRestore, ScrollText
 } from 'lucide-react';
 import Dashboard from './pages/Dashboard';
 import NewReport from './pages/NewReport';
@@ -17,8 +15,10 @@ import { subscribeReports, syncReport } from './services/cloudReports';
 import { trashReport as trashCloudReport } from './services/cloudReports';
 import UserManagement from './pages/UserManagement';
 import Trash from './pages/Trash';
-import dentalPlusLogo from '../assets/logo.png';
 import AuditLog from './pages/AuditLog';
+import Sidebar from './components/layout/Sidebar';
+import Topbar from './components/layout/Topbar';
+import LogConsole from './components/layout/LogConsole';
 
 export function formatBRL(value) {
   return Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -179,114 +179,23 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      <aside className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}>
-        <div className="sidebar-brand" style={{ position: 'relative', width: '100%' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-            {!sidebarCollapsed ? (
-              <img src={dentalPlusLogo} alt="Dental Plus" style={{ width: '135px' }} />
-            ) : (
-              <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#fff', display: 'grid', placeItems: 'center', fontWeight: '900', color: '#062a60', fontSize: '15px' }}>D</div>
-            )}
-            <button 
-              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-              style={{
-                background: 'rgba(255,255,255,0.1)',
-                border: 0,
-                borderRadius: '6px',
-                width: '28px',
-                height: '28px',
-                display: 'grid',
-                placeItems: 'center',
-                color: '#fff',
-                cursor: 'pointer'
-              }}
-            >
-              {sidebarCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
-            </button>
-          </div>
-          {!sidebarCollapsed && <span>Gestão de Comissões</span>}
-        </div>
-
-        <nav className="side-nav">
-          {navItems.map(item => {
-            const IconComponent = item.icon;
-            const isActive = activePage === item.id;
-            return (
-              <button 
-                key={item.id}
-                className={`nav-item ${isActive ? 'active' : ''}`} 
-                onClick={() => { 
-                  setActivePage(item.id); 
-                  if (item.id === 'dashboard' || item.id === 'saved-reports') {
-                    refreshHistory();
-                  }
-                }}
-                data-tooltip={item.tooltip}
-              >
-                {isActive && (
-                  <motion.div 
-                    layoutId="activeNavPill"
-                    style={{
-                      position: 'absolute',
-                      inset: 0,
-                      background: 'linear-gradient(90deg, #0766d8, #0e82ee)',
-                      borderRadius: '9px',
-                      zIndex: -1
-                    }}
-                    transition={{ type: 'spring', stiffness: 380, damping: 30 }}
-                  />
-                )}
-                <IconComponent size={18} style={{ flexShrink: 0 }} />
-                <span className="nav-text">{item.label}</span>
-              </button>
-            );
-          })}
-        </nav>
-
-        <div className="sidebar-footer">
-          <strong>Contabilizador de Comissões</strong>
-          <span>Uso interno · v1.0</span>
-          <small>Desenvolvido por<br /><b>glzn-comercial</b></small>
-        </div>
-      </aside>
+      <Sidebar
+        collapsed={sidebarCollapsed}
+        onToggle={() => setSidebarCollapsed(value => !value)}
+        items={navItems}
+        activePage={activePage}
+        onNavigate={setActivePage}
+        onRefresh={refreshHistory}
+      />
 
       <main className="main-area">
-        <header className="topbar">
-          <div>
-            <strong>Contabilizador de Comissões Dental Plus</strong>
-            <span id="pageSubtitle">{pageSubtitles[activePage]}</span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <span className={`sync-pill ${session.configured && !cloudState.fromCache ? 'online' : 'offline'}`}>
-              {session.configured
-                ? cloudState.hasPendingWrites ? 'Sincronizando' : cloudState.fromCache ? 'Offline' : 'Sincronizado'
-                : 'Modo local'}
-            </span>
-            <button 
-              onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
-              style={{
-                background: 'transparent',
-                border: '1px solid var(--line)',
-                borderRadius: '8px',
-                padding: '6px 12px',
-                color: 'var(--text)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                fontSize: '12px',
-                fontWeight: '700',
-                cursor: 'pointer'
-              }}
-            >
-              {theme === 'light' ? <Moon size={14} /> : <Sun size={14} />}
-              {theme === 'light' ? 'Escuro' : 'Claro'}
-            </button>
-            <span className="alpha-pill">v1.0</span>
-            <button className="user-pill" onClick={session.configured ? session.logout : undefined} title={session.configured ? 'Sair da conta' : 'Firebase não configurado'}>
-              {session.profile?.displayName || session.user?.email || 'Usuário'} · {session.profile?.role === 'admin' ? 'Administrador' : 'Operador'}
-            </button>
-          </div>
-        </header>
+        <Topbar
+          subtitle={pageSubtitles[activePage]}
+          theme={theme}
+          onToggleTheme={() => setTheme(value => value === 'light' ? 'dark' : 'light')}
+          session={session}
+          cloudState={cloudState}
+        />
 
         <div className="content">
           {activePage === 'dashboard' && (
@@ -338,101 +247,19 @@ export default function App() {
         </div>
       </main>
 
-      {/* Console de Logs Flutuante */}
-      <button className="log-console-trigger" onClick={() => setShowConsole(!showConsole)}>
-        {showConsole ? <X size={20} /> : <Terminal size={20} />}
-        {!showConsole && errorLogsCount > 0 && (
-          <span className="badge">{errorLogsCount}</span>
-        )}
-      </button>
-
-      <AnimatePresence>
-        {showConsole && (
-          <motion.div 
-            className="log-console-panel"
-            initial={{ opacity: 0, y: 30, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 30, scale: 0.95 }}
-            transition={{ duration: 0.2 }}
-          >
-            <div className="log-console-header">
-              <h3><Terminal size={14} /> Console de Logs</h3>
-              <div className="log-console-actions">
-                <button onClick={handleCopyLogs} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  {copyFeedback ? <Check size={11} className="text-green-500" /> : <Copy size={11} />}
-                  {copyFeedback ? 'Copiado!' : 'Copiar'}
-                </button>
-                <button onClick={() => setLogs([])} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  <Trash2 size={11} /> Limpar
-                </button>
-                <button className="close" onClick={() => setShowConsole(false)}><X size={14} /></button>
-              </div>
-            </div>
-            
-            {/* Filter buttons by severity */}
-            <div style={{ display: 'flex', gap: '6px', padding: '8px 12px', background: '#0f172a', borderBottom: '1px solid #334155', fontSize: '11px' }}>
-              <button 
-                onClick={() => setLogSeverityFilter('ALL')} 
-                style={{
-                  background: logSeverityFilter === 'ALL' ? '#334155' : 'transparent',
-                  border: 0, padding: '3px 8px', borderRadius: '4px', color: '#e2e8f0', cursor: 'pointer'
-                }}
-              >
-                TODOS ({logs.length})
-              </button>
-              <button 
-                onClick={() => setLogSeverityFilter('info')} 
-                style={{
-                  background: logSeverityFilter === 'info' ? '#0369a1' : 'transparent',
-                  border: 0, padding: '3px 8px', borderRadius: '4px', color: '#e0f2fe', cursor: 'pointer'
-                }}
-              >
-                INFO ({logs.filter(l => l.type === 'info').length})
-              </button>
-              <button 
-                onClick={() => setLogSeverityFilter('success')} 
-                style={{
-                  background: logSeverityFilter === 'success' ? '#15803d' : 'transparent',
-                  border: 0, padding: '3px 8px', borderRadius: '4px', color: '#dcfce7', cursor: 'pointer'
-                }}
-              >
-                SUCESSO ({logs.filter(l => l.type === 'success').length})
-              </button>
-              <button 
-                onClick={() => setLogSeverityFilter('error')} 
-                style={{
-                  background: logSeverityFilter === 'error' ? '#b91c1c' : 'transparent',
-                  border: 0, padding: '3px 8px', borderRadius: '4px', color: '#fee2e2', cursor: 'pointer'
-                }}
-              >
-                ERRO ({logs.filter(l => l.type === 'error').length})
-              </button>
-            </div>
-
-            <div className="log-console-body" ref={consoleBodyRef}>
-              {filteredLogs.length === 0 ? (
-                <div className="log-empty">Nenhum log registrado para este filtro.</div>
-              ) : (
-                filteredLogs.map(log => {
-                  let LogIcon = Info;
-                  if (log.type === 'success') LogIcon = CheckCircle2;
-                  if (log.type === 'error') LogIcon = AlertCircle;
-                  return (
-                    <div key={log.id} className="log-item" style={{ display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
-                      <span className="log-time">[{log.timestamp}]</span>
-                      <span className={`log-type ${log.type}`} style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-                        <LogIcon size={10} />
-                        {log.type.toUpperCase()}
-                      </span>
-                      <span className="log-text">{log.message}</span>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <LogConsole
+        logs={logs}
+        setLogs={setLogs}
+        visible={showConsole}
+        setVisible={setShowConsole}
+        filter={logSeverityFilter}
+        setFilter={setLogSeverityFilter}
+        filteredLogs={filteredLogs}
+        bodyRef={consoleBodyRef}
+        copyFeedback={copyFeedback}
+        onCopy={handleCopyLogs}
+        errorCount={errorLogsCount}
+      />
     </div>
   );
 }
