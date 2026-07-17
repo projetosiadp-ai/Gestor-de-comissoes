@@ -192,14 +192,14 @@ function normalizarCorretoraParaGrupo(nome) {
     const principalNorm = normalizeBaseText(nomePrincipal);
     const aliasList = Array.isArray(aliases) ? aliases : [];
 
-    if (base === principalNorm || base.includes(principalNorm) || principalNorm.includes(base)) {
+    if (base === principalNorm || base.startsWith(principalNorm) || principalNorm.startsWith(base)) {
       return nomePrincipal;
     }
 
     for (const alias of aliasList) {
       const aliasNorm = normalizeBaseText(alias);
       if (!aliasNorm) continue;
-      if (base === aliasNorm || base.includes(aliasNorm) || aliasNorm.includes(base)) {
+      if (base === aliasNorm || base.startsWith(aliasNorm) || aliasNorm.startsWith(base)) {
         return nomePrincipal;
       }
     }
@@ -256,8 +256,18 @@ function parseVendedorCorretora(rawTitle, filePath = '') {
 
   // Caso 1: padrão VENDEDOR - CORRETORA
   if (parts.length >= 2) {
-    vendedor = parts[0];
-    corretora = parts.slice(1).join(' - ');
+    const lastPartNorm = parts[parts.length - 1].toUpperCase().replace(/[^A-Z]/g, '');
+    const genericSuffixes = ['EIRELI', 'ME', 'LTDA', 'SA', 'EPP', 'SS', 'LIMITADA', 'EIR', 'EIRE'];
+    const isGenericDesc = /^(CORRETORA|CORRETORA DE SEGUROS|ADMINISTRADORA DE BENEFICIOS)( E SERVICOS)?( LTDA| ME| EIRELI| EPP| S\/S| LIMITADA)?$/i.test(parts[parts.length - 1]);
+    
+    if ((genericSuffixes.includes(lastPartNorm) || isGenericDesc) && parts.length === 2) {
+      corretora = text;
+      vendedor = 'Corretora principal';
+      isPrincipalCorretora = true;
+    } else {
+      vendedor = parts[0];
+      corretora = parts.slice(1).join(' - ');
+    }
   }
 
   // Caso 2: arquivo da própria corretora, sem vendedor.

@@ -4,6 +4,7 @@ import NewReport from './pages/NewReport';
 import SavedReports from './pages/SavedReports';
 import PdfSummary from './pages/PdfSummary';
 import GeneralReport from './pages/GeneralReport';
+import Analytics from './pages/Analytics';
 
 export function formatBRL(value) {
   return Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -64,7 +65,8 @@ export default function App() {
     'new-report': 'Importação e geração de relatórios',
     'saved-reports': 'Histórico mensal dos processamentos',
     'pdf-summary': 'Resumo único das comissões em PDF',
-    'general-report': 'Consolidação de planilhas individuais em relatório geral'
+    'general-report': 'Consolidação de planilhas individuais em relatório geral',
+    'analytics': 'Ranking e Análise Detalhada de Vendas'
   };
 
   const pageTitles = {
@@ -72,7 +74,8 @@ export default function App() {
     'new-report': 'Novo relatório',
     'saved-reports': 'Relatórios salvos',
     'pdf-summary': 'PDF de resumo',
-    'general-report': 'Relatório Geral'
+    'general-report': 'Relatório Geral',
+    'analytics': 'Analítica'
   };
 
   const errorLogsCount = logs.filter(l => l.type === 'error').length;
@@ -115,6 +118,12 @@ export default function App() {
             onClick={() => setActivePage('general-report')}
           >
             <span>田</span> Relatório Geral
+          </button>
+          <button 
+            className={`nav-item ${activePage === 'analytics' ? 'active' : ''}`} 
+            onClick={() => { setActivePage('analytics'); refreshHistory(); }}
+          >
+            <span>📈</span> Analítica
           </button>
         </nav>
 
@@ -164,6 +173,11 @@ export default function App() {
             <GeneralReport 
               refreshHistory={refreshHistory}
               addLog={addLog}
+            />
+          )}
+          {activePage === 'analytics' && (
+            <Analytics 
+              savedReports={savedReports} 
             />
           )}
         </div>
