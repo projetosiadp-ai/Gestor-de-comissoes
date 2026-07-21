@@ -9,6 +9,7 @@ import { formatBRL } from '../App';
 import { generateIndividualReports } from '../services/reportGenerator';
 import { analyzeFile } from '../lib/reports/input-reader';
 import { saveReport } from '../services/historyService';
+import { useAuth } from '../auth/AuthContext';
 
 function formatBytes(bytes) {
   if (bytes === undefined || bytes === null || isNaN(bytes)) return 'N/A';
@@ -20,6 +21,7 @@ function formatBytes(bytes) {
 }
 
 export default function NewReport({ refreshHistory, addLog, onReportCreated, knownReports = [] }) {
+  const session = useAuth();
   const log = (type, msg) => {
     if (addLog) addLog(type, msg);
   };
@@ -288,7 +290,9 @@ export default function NewReport({ refreshHistory, addLog, onReportCreated, kno
         totalGeral: totalValue,
         inputFiles: filesArray.length,
         totalFiles: res.summary.length,
-        errors: res.errors
+        errors: res.errors,
+        createdByUid: session.actor?.uid || 'local',
+        createdByName: session.actor?.displayName || session.actor?.email || 'Usuário'
       };
 
       await saveReport(savedReport);

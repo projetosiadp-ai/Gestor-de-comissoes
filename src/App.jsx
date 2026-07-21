@@ -116,19 +116,19 @@ export default function App() {
 
   const handleReportCreated = useCallback(report => {
     if (!session.configured || !session.user || session.profile?.status !== 'approved') return;
-    syncReport(report, session.user)
+    syncReport(report, session.actor)
       .then(() => addLog('success', 'Metadados do relatório sincronizados com segurança.'))
       .catch(error => addLog('error', `Sincronização pendente: ${error.message}`));
-  }, [session.configured, session.user, session.profile?.status, addLog]);
+  }, [session.configured, session.user, session.actor, session.profile?.status, addLog]);
 
   const handleTrashReport = useCallback(async reportId => {
     if (!session.isAdmin) throw new Error('Somente Administradores podem mover relatórios para a lixeira.');
     await deleteLocalReport(reportId);
     if (session.configured && cloudReports.some(report => report.id === reportId)) {
-      await trashCloudReport(reportId, session.user);
+      await trashCloudReport(reportId, session.actor);
     }
     await refreshHistory();
-  }, [session.isAdmin, session.configured, session.user, cloudReports, refreshHistory]);
+  }, [session.isAdmin, session.configured, session.actor, cloudReports, refreshHistory]);
 
   const pageSubtitles = {
     dashboard: 'Visão geral dos relatórios',

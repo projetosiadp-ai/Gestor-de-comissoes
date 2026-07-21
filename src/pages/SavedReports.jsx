@@ -25,6 +25,7 @@ function HistoryTable({ reports, onDelete, isAdmin }) {
             <th>Valor total</th>
             <th>Arquivos</th>
             <th>Criado em</th>
+            <th>Criado por</th>
             <th style={{ textAlign: 'right' }}>Ações</th>
           </tr>
         </thead>
@@ -54,6 +55,7 @@ function HistoryTable({ reports, onDelete, isAdmin }) {
                   <td>{formatBRL(report.totalValue || report.totalGeral || 0)}</td>
                   <td>{Number(report.inputFiles || report.totalFiles || 0)}</td>
                   <td>{new Date(report.createdAt).toLocaleString('pt-BR')}</td>
+                  <td>{report.createdByName || '—'}</td>
                   <td>
                     <div className="history-row-actions" style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end', alignItems: 'center', flexWrap: 'wrap' }}>
                       <button 
@@ -100,7 +102,7 @@ function HistoryTable({ reports, onDelete, isAdmin }) {
                 {/* Sub-tabela expansível com as planilhas individuais por corretora */}
                 {isExpanded && (
                   <tr>
-                    <td colSpan={7} style={{ background: 'var(--panel-subtle, rgba(0,0,0,0.02))', padding: '16px 24px' }}>
+                    <td colSpan={8} style={{ background: 'var(--panel-subtle, rgba(0,0,0,0.02))', padding: '16px 24px' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
                         <div>
                           <strong style={{ fontSize: '14px', color: 'var(--primary)' }}>

@@ -71,6 +71,7 @@ export async function addAudit(action, targetId, user, details = {}) {
     targetId: String(targetId || '').slice(0, 150),
     actorUid: user.uid,
     actorEmail: String(user.email || '').slice(0, 200),
+    actorName: String(user.displayName || '').slice(0, 120),
     createdAt: new Date().toISOString(),
     details
   });

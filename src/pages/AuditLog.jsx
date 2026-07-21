@@ -36,7 +36,7 @@ export default function AuditLog() {
         {entries.map(entry => (
           <article className="audit-row" key={entry.id}>
             <span className="audit-icon">{entry.action?.startsWith('user.') ? <ShieldCheck size={17} /> : <FileClock size={17} />}</span>
-            <div><b>{ACTION_LABELS[entry.action] || entry.action}</b><small>{entry.actorEmail || entry.actorUid}</small></div>
+            <div><b>{ACTION_LABELS[entry.action] || entry.action}</b><small>{entry.actorName || entry.actorEmail || entry.actorUid}</small></div>
             <div><b>{entry.targetId}</b><small>{new Date(entry.createdAt).toLocaleString('pt-BR')}</small></div>
           </article>
         ))}

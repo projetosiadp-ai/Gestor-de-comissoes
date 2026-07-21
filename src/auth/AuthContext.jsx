@@ -66,17 +66,24 @@ export function AuthProvider({ children }) {
   };
 
   const logout = () => signOut(auth);
+  const actor = useMemo(() => (user ? {
+    uid: user.uid,
+    email: user.email || null,
+    displayName: profile?.displayName || null
+  } : null), [user, profile]);
+
   const value = useMemo(() => ({
     configured: firebaseConfigured,
     user,
     profile,
+    actor,
     loading,
     isAdmin: profile?.role === 'admin' && profile?.status === 'approved',
     login,
     register,
     logout,
     refreshProfile: () => loadProfile(user)
-  }), [user, profile, loading, loadProfile]);
+  }), [user, profile, actor, loading, loadProfile]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

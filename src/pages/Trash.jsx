@@ -18,7 +18,7 @@ export default function Trash({ cloudReports, refreshHistory }) {
   const restore = async report => {
     try {
       if (session.configured) {
-        await restoreCloudReport(report.id, session.user);
+        await restoreCloudReport(report.id, session.actor);
       }
       refreshHistory();
     } catch (failure) { setError(failure.message); }
@@ -26,7 +26,7 @@ export default function Trash({ cloudReports, refreshHistory }) {
 
   const purge = async report => {
     try {
-      await purgeReport(report.id, session.user);
+      await purgeReport(report.id, session.actor);
     } catch (failure) { setError(failure.message); }
   };
 

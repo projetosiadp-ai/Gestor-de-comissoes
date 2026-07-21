@@ -21,6 +21,7 @@ export function sanitizeReportForCloud(report, user) {
     label: text(report.label, 80),
     createdAt: text(report.createdAt, 40),
     createdByUid: text(user.uid, 128),
+    createdByName: text(report.createdByName, 120),
     sellers: number(report.sellers),
     brokers: number(report.brokers),
     totalValue: number(report.totalValue),

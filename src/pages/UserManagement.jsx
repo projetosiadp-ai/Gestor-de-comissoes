@@ -18,7 +18,7 @@ export default function UserManagement() {
     setBusyId(userId);
     setError('');
     try {
-      await updateUserAccess(userId, { role, status }, session.user);
+      await updateUserAccess(userId, { role, status }, session.actor);
     } catch (failure) {
       setError(failure.message);
     } finally {
