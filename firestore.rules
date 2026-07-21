@@ -80,6 +80,17 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    match /saved_reports/{reportId} {
+      allow read: if isApproved();
+      allow create, update: if isApproved();
+      allow delete: if isAdmin();
+    }
+
+    match /system_config/{configId} {
+      allow read: if isApproved();
+      allow write: if isAdmin();
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }
