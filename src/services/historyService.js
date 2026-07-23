@@ -33,21 +33,20 @@ export async function getSavedReports() {
       const teamKey = await getTeamKey();
       reports = await Promise.all(snapshot.docs.map(async d => {
         const data = d.data();
-        let summary = [];
-        if (data.encryptedSellerData && teamKey) {
+        const { encryptedSellerData, ...rest } = data;
+        const result = {
+          id: d.id,
+          ...rest,
+          date: data.date?.toDate()?.toISOString() || data.createdAt
+        };
+        if (encryptedSellerData && teamKey) {
           try {
-            summary = await decryptJson(teamKey, data.encryptedSellerData);
+            result.summary = await decryptJson(teamKey, encryptedSellerData);
           } catch (err) {
             console.error('Erro ao decifrar dados de vendedores do relatório', d.id, err);
           }
         }
-        const { encryptedSellerData, ...rest } = data;
-        return {
-          id: d.id,
-          ...rest,
-          summary,
-          date: data.date?.toDate()?.toISOString() || data.createdAt
-        };
+        return result;
       }));
     } catch (err) {
       console.error('Error fetching reports from Firestore:', err);
