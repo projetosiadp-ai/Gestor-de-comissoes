@@ -10,4 +10,7 @@ test('Firestore rules require approved roles and an explicit safe report field l
   assert.match(rules, /request\.resource\.data\.keys\(\)\.hasOnly\(/);
   assert.match(rules, /allow read, write: if false/);
   assert.doesNotMatch(rules, /\b(cpf|cliente|contrato|responsavel)\b/i);
+  assert.match(rules, /function validSavedReport\(\)/);
+  assert.match(rules, /resource\.data\.createdByUid == request\.auth\.uid \|\| isAdmin\(\)/);
+  assert.match(rules, /match \/public_status\/maintenance/);
 });
