@@ -1,5 +1,8 @@
 import { collection, doc, getDocs, setDoc, deleteDoc, query, orderBy, Timestamp } from 'firebase/firestore';
 import { db } from './firebaseClient';
+import { sanitizeSavedReportForCloud } from './report-sanitizer.mjs';
+import { encryptJson, decryptJson } from '../lib/crypto/teamCipher.mjs';
+import { getTeamKey } from './teamKeyService';
 
 const LOCAL_STORAGE_KEY = 'dp_saved_reports_v2';
 
@@ -27,10 +30,24 @@ export async function getSavedReports() {
     try {
       const q = query(collection(db, 'saved_reports'), orderBy('date', 'desc'));
       const snapshot = await getDocs(q);
-      reports = snapshot.docs.map(d => ({
-        id: d.id,
-        ...d.data(),
-        date: d.data().date?.toDate()?.toISOString() || d.data().createdAt
+      const teamKey = await getTeamKey();
+      reports = await Promise.all(snapshot.docs.map(async d => {
+        const data = d.data();
+        let summary = [];
+        if (data.encryptedSellerData && teamKey) {
+          try {
+            summary = await decryptJson(teamKey, data.encryptedSellerData);
+          } catch (err) {
+            console.error('Erro ao decifrar dados de vendedores do relatório', d.id, err);
+          }
+        }
+        const { encryptedSellerData, ...rest } = data;
+        return {
+          id: d.id,
+          ...rest,
+          summary,
+          date: data.date?.toDate()?.toISOString() || data.createdAt
+        };
       }));
     } catch (err) {
       console.error('Error fetching reports from Firestore:', err);
@@ -47,7 +64,7 @@ export async function getSavedReports() {
   return mergedList;
 }
 
-export async function saveReport(reportData) {
+export async function saveReport(reportData, actor) {
   const reportId = reportData.id || `${reportData.month || reportData.key}_${Date.now()}`;
   const completeReport = {
     ...reportData,
@@ -59,13 +76,17 @@ export async function saveReport(reportData) {
   const updated = [completeReport, ...filtered];
   saveLocalReports(updated);
 
-  if (db) {
+  if (db && actor?.uid) {
     try {
-      const reportRef = doc(collection(db, 'saved_reports'), reportId);
-      await setDoc(reportRef, {
-        ...completeReport,
-        date: Timestamp.now()
-      });
+      const teamKey = await getTeamKey();
+      if (teamKey) {
+        const encryptedSellerData = await encryptJson(teamKey, completeReport.summary || []);
+        const safeReport = sanitizeSavedReportForCloud(completeReport, actor, encryptedSellerData);
+        const reportRef = doc(collection(db, 'saved_reports'), reportId);
+        await setDoc(reportRef, { ...safeReport, date: Timestamp.now() });
+      } else {
+        console.warn('Chave de equipe ainda não configurada. Peça a um Administrador para gerá-la em "Configurar corretoras". Relatório salvo apenas localmente.');
+      }
     } catch (err) {
       console.error('Error saving report to Firestore:', err);
     }
