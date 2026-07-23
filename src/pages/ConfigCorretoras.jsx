@@ -6,6 +6,8 @@ import {
 } from 'lucide-react';
 
 import { getCorretorasConfig, saveCorretorasConfig } from '../services/configService';
+import { useAuth } from '../auth/AuthContext';
+import { hasTeamKey, generateTeamKey } from '../services/teamKeyService';
 
 export default function ConfigCorretoras({ addLog }) {
   const [config, setConfig] = useState({});
@@ -14,6 +16,27 @@ export default function ConfigCorretoras({ addLog }) {
   const [newBrokerName, setNewBrokerName] = useState('');
   const [newAlias, setNewAlias] = useState('');
   const [status, setStatus] = useState({ type: '', message: '' });
+
+  const session = useAuth();
+  const [teamKeyReady, setTeamKeyReady] = useState(null);
+  const [generatingKey, setGeneratingKey] = useState(false);
+
+  useEffect(() => {
+    hasTeamKey().then(setTeamKeyReady).catch(() => setTeamKeyReady(false));
+  }, []);
+
+  const handleGenerateTeamKey = async () => {
+    setGeneratingKey(true);
+    try {
+      await generateTeamKey(session.actor);
+      setTeamKeyReady(true);
+      log('success', 'Chave de criptografia da equipe gerada com sucesso.');
+    } catch (err) {
+      log('error', 'Falha ao gerar chave de equipe: ' + err.message);
+    } finally {
+      setGeneratingKey(false);
+    }
+  };
 
   // Debounced search query states
   const [searchQuery, setSearchQuery] = useState('');
@@ -140,6 +163,21 @@ export default function ConfigCorretoras({ addLog }) {
         <div className={`status ${status.type}`} style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: '8px' }}>
           {status.type === 'success' ? <CheckCircle size={16} /> : <AlertCircle size={16} />}
           <span>{status.message}</span>
+        </div>
+      )}
+
+      {session.isAdmin && teamKeyReady === false && (
+        <div className="panel" style={{ marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <div>
+            <b>Chave de criptografia da equipe não configurada</b>
+            <p className="muted" style={{ margin: '4px 0 0', fontSize: 13 }}>
+              Sem essa chave, novos relatórios não sincronizam o ranking de vendedores com a nuvem (ficam salvos só localmente).
+              Gere a chave uma única vez.
+            </p>
+          </div>
+          <button className="primary" disabled={generatingKey} onClick={handleGenerateTeamKey}>
+            {generatingKey ? 'Gerando...' : 'Gerar chave de equipe'}
+          </button>
         </div>
       )}
 

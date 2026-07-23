@@ -22,6 +22,24 @@ As chaves `VITE_FIREBASE_*` identificam o aplicativo Web e não substituem as re
 
 Depois disso, o próprio Administrador pode aprovar Operadores pela interface.
 
+## Chave de criptografia da equipe (ranking de vendedores)
+
+O histórico de relatórios salvos (`saved_reports`) guarda o nome e a comissão de cada
+vendedor cifrados no navegador antes de ir para o Firestore. Depois de aprovar o
+primeiro Administrador:
+
+1. Entre como Administrador e abra **Configurar corretoras**.
+2. Clique em **Gerar chave de equipe** (aparece só se ainda não existir).
+3. A partir daí, todo relatório salvo por qualquer usuário aprovado passa a
+   sincronizar o ranking de vendedores de forma cifrada.
+
+**Limitação da Fase 1:** como não há servidor nesta fase, a chave fica em
+`system_config/team_key`, legível por qualquer usuário aprovado — o mesmo grupo que
+já acessa o dado cifrado. Isso protege contra acesso via console/API por quem não é
+usuário do app e contra bugs de regra que exponham a coleção sem querer, mas não
+protege um dispositivo roubado com o cache offline do Firestore ativo. Entrega de
+chave via servidor fica para uma Fase 2 futura.
+
 ## Dados que podem ir para o Firestore
 
 - identificador e mês do processamento;
