@@ -40,7 +40,7 @@ export default function UserManagement() {
 
   const confirmPromotion = async () => {
     if (!promotionTarget) return;
-    if (confirmEmail.trim().toLowerCase() !== String(promotionTarget.email || '').toLowerCase()) return;
+    if (!promotionTarget.email || confirmEmail.trim().toLowerCase() !== String(promotionTarget.email).toLowerCase()) return;
     await changeAccess(promotionTarget.id, 'admin', 'approved', promotionTarget.role);
     cancelPromotion();
   };
@@ -73,7 +73,7 @@ export default function UserManagement() {
           <div style={{ display: 'flex', gap: 8 }}>
             <button
               className="primary"
-              disabled={busyId === promotionTarget.id || confirmEmail.trim().toLowerCase() !== String(promotionTarget.email || '').toLowerCase()}
+              disabled={busyId === promotionTarget.id || !promotionTarget.email || confirmEmail.trim().toLowerCase() !== String(promotionTarget.email).toLowerCase()}
               onClick={confirmPromotion}
             >
               Confirmar promoção

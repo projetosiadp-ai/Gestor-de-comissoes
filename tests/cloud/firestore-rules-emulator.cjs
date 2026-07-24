@@ -109,7 +109,7 @@ test('an operator cannot overwrite a saved_report created by someone else', asyn
   const context = testEnvironment.authenticatedContext(OTHER_OPERATOR_UID, { email: 'outro@empresa.com' });
   await rulesTesting.assertFails(context.firestore().collection('saved_reports').doc('saved-1').set({
     ...VALID_SAVED_REPORT,
-    createdByUid: OPERATOR_UID,
+    createdByUid: OTHER_OPERATOR_UID,
     totalValue: 999999,
     date: new Date()
   }));
@@ -181,7 +181,7 @@ test('only an admin can read audit, and audit entries cannot include unexpected 
   await rulesTesting.assertSucceeds(adminContext.firestore().collection('audit').get());
 });
 
-test('an admin cannot self-promote by editing arbitrary user fields', async () => {
+test('an operator cannot self-promote by editing arbitrary user fields', async () => {
   const context = testEnvironment.authenticatedContext(OPERATOR_UID, { email: 'operador@empresa.com' });
   await rulesTesting.assertFails(context.firestore().collection('users').doc(OPERATOR_UID).update({ role: 'admin', status: 'approved' }));
 });
