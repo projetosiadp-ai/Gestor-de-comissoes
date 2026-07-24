@@ -13,7 +13,7 @@ export function subscribeUsers(onChange, onError) {
   }, onError);
 }
 
-export async function updateUserAccess(userId, { role, status }, adminUser) {
+export async function updateUserAccess(userId, { role, status }, adminUser, previousRole) {
   requireCloud();
   if (!['admin', 'operator'].includes(role)) throw new Error('Perfil inválido.');
   if (!['approved', 'pending', 'rejected'].includes(status)) throw new Error('Status inválido.');
@@ -23,5 +23,8 @@ export async function updateUserAccess(userId, { role, status }, adminUser) {
     approvedAt: status === 'approved' ? new Date().toISOString() : null,
     approvedByUid: status === 'approved' ? adminUser.uid : null
   });
-  await addAudit(`user.${status}`, userId, adminUser);
+  await addAudit(`user.${status}`, userId, adminUser, {
+    previousRole: previousRole || null,
+    newRole: role
+  });
 }

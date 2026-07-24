@@ -44,6 +44,51 @@ service cloud.firestore {
         && request.resource.data.deletedByUid == null;
     }
 
+    function safeSavedReportFields() {
+      return [
+        'id', 'month', 'label', 'date', 'createdAt', 'createdByUid', 'createdByName',
+        'brokers', 'sellers', 'totalValue', 'inputFiles', 'errors',
+        'encryptedSellerData', 'deletedAt', 'deletedByUid'
+      ];
+    }
+
+    function validSavedReport() {
+      return request.resource.data.keys().hasOnly(safeSavedReportFields())
+        && request.resource.data.keys().hasAll(safeSavedReportFields())
+        && request.resource.data.createdByUid == request.auth.uid
+        && request.resource.data.id is string
+        && request.resource.data.month is string
+        && request.resource.data.label is string
+        && request.resource.data.createdAt is string
+        && request.resource.data.createdByName is string
+        && request.resource.data.date is timestamp
+        && request.resource.data.brokers is number
+        && request.resource.data.sellers is number
+        && request.resource.data.totalValue is number
+        && request.resource.data.inputFiles is number
+        && request.resource.data.errors is number
+        && request.resource.data.encryptedSellerData is string
+        && request.resource.data.encryptedSellerData.size() <= 200000
+        && request.resource.data.deletedAt == null
+        && request.resource.data.deletedByUid == null;
+    }
+
+    function validCorretorasConfig() {
+      return request.resource.data.keys().hasOnly(['config'])
+        && request.resource.data.config is map
+        && request.resource.data.config.size() <= 500;
+    }
+
+    function validTeamKey() {
+      return request.resource.data.keys().hasOnly(['key', 'createdAt', 'createdByUid'])
+        && request.resource.data.keys().hasAll(['key', 'createdAt', 'createdByUid'])
+        && request.resource.data.key is string
+        && request.resource.data.key.size() > 0
+        && request.resource.data.key.size() <= 200
+        && request.resource.data.createdAt is string
+        && request.resource.data.createdByUid == request.auth.uid;
+    }
+
     match /users/{userId} {
       allow create: if signedIn()
         && request.auth.uid == userId
@@ -75,20 +120,26 @@ service cloud.firestore {
         ])
         && request.resource.data.actorUid == request.auth.uid
         && request.resource.data.details.keys().hasOnly([
-          'month', 'version', 'batchFingerprint', 'deletedAt'
+          'month', 'version', 'batchFingerprint', 'deletedAt', 'previousRole', 'newRole'
         ]);
       allow update, delete: if false;
     }
 
     match /saved_reports/{reportId} {
       allow read: if isApproved();
-      allow create, update: if isApproved();
+      allow create: if isApproved() && validSavedReport() && request.resource.data.id == reportId;
+      allow update: if isApproved() && validSavedReport()
+        && (resource.data.createdByUid == request.auth.uid || isAdmin());
       allow delete: if isAdmin();
     }
 
     match /system_config/{configId} {
       allow read: if isApproved();
-      allow write: if isAdmin();
+      allow write: if isAdmin()
+        && (
+          (configId == 'corretoras_config' && validCorretorasConfig()) ||
+          (configId == 'team_key' && validTeamKey())
+        );
     }
 
     // Lido por qualquer visitante (mesmo deslogado) para exibir a tela de

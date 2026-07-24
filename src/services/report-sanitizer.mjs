@@ -38,3 +38,24 @@ export function sanitizeReportForCloud(report, user) {
     deletedByUid: null
   };
 }
+
+export function sanitizeSavedReportForCloud(report, user, encryptedSellerData) {
+  if (!user?.uid) throw new Error('Usuário autenticado obrigatório para sincronizar.');
+
+  return {
+    id: text(report.id, 120),
+    month: text(report.month, 7),
+    label: text(report.label, 80),
+    createdAt: text(report.createdAt, 40),
+    createdByUid: text(user.uid, 128),
+    createdByName: text(report.createdByName, 120),
+    brokers: number(report.brokers),
+    sellers: number(report.sellers),
+    totalValue: number(report.totalValue),
+    inputFiles: number(report.inputFiles),
+    errors: Array.isArray(report.errors) ? report.errors.length : number(report.errors),
+    encryptedSellerData: text(encryptedSellerData, 200000),
+    deletedAt: null,
+    deletedByUid: null
+  };
+}

@@ -192,7 +192,7 @@ export default function App() {
     return <MaintenanceScreen />;
   }
 
-  if (session.loading || (session.configured && (!session.user || session.profile?.status !== 'approved'))) {
+  if (session.loading || !session.configured || !session.user || session.profile?.status !== 'approved') {
     return <AuthScreen />;
   }
 

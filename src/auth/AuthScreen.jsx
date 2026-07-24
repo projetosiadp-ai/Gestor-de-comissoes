@@ -9,6 +9,22 @@ export default function AuthScreen() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
+  if (!auth.configured) {
+    return (
+      <main className="auth-shell">
+        <section className="auth-card pending">
+          <h1>Configuração do Firebase ausente</h1>
+          <p>
+            Este aplicativo não pode operar sem uma configuração válida do Firebase.
+            Nenhum acesso é liberado enquanto isso não for corrigido — nem mesmo de
+            administrador. Preencha as variáveis <code>VITE_FIREBASE_*</code> em um
+            arquivo <code>.env</code> (veja <code>docs/CONFIGURACAO_FIREBASE.md</code>).
+          </p>
+        </section>
+      </main>
+    );
+  }
+
   if (auth.loading) return <div className="auth-loading">Carregando acesso seguro...</div>;
 
   if (auth.user && auth.profile?.status !== 'approved') {

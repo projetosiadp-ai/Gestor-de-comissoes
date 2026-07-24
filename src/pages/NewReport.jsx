@@ -295,7 +295,7 @@ export default function NewReport({ refreshHistory, addLog, onReportCreated, kno
         createdByName: session.actor?.displayName || session.actor?.email || 'Usuário'
       };
 
-      await saveReport(savedReport);
+      await saveReport(savedReport, session.actor);
 
       setResult({ ...res, totalFiles: res.summary.length });
       const errorCount = res.errors?.length ? `\nArquivos com erro: ${res.errors.length}` : '';
