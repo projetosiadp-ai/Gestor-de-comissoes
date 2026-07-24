@@ -10,17 +10,9 @@ import { auth, db, firebaseConfigured } from '../services/firebaseClient';
 
 const AuthContext = createContext(null);
 
-function localSession() {
-  return {
-    user: { uid: 'local', email: 'modo-local@dentalplus' },
-    profile: { displayName: 'Modo local', role: 'admin', status: 'approved' }
-  };
-}
-
 export function AuthProvider({ children }) {
-  const initial = firebaseConfigured ? { user: null, profile: null } : localSession();
-  const [user, setUser] = useState(initial.user);
-  const [profile, setProfile] = useState(initial.profile);
+  const [user, setUser] = useState(null);
+  const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(firebaseConfigured);
 
   const loadProfile = useCallback(async currentUser => {
