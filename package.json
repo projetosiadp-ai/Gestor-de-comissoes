@@ -2,7 +2,6 @@
   "name": "contabilizador-comissoes-dental-plus",
   "version": "1.0.0",
   "description": "Contabilizador de comissões Dental Plus com processamento local e histórico compartilhado",
-  "main": "main.js",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

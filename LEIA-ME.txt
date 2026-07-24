@@ -1,34 +1,42 @@
-CONTABILIZADOR DE COMISSÕES DENTAL PLUS — v1.0
+CONTABILIZADOR DE COMISSÕES DENTAL PLUS
 
 COMO USAR
-1. Abra a pasta release.
-2. Execute o arquivo correspondente ao Windows:
-   - x64: Windows de 64 bits.
-   - ia32: Windows de 32 bits.
-3. Na primeira abertura, confirme ou altere a pasta padrão de relatórios.
+- Acesse a versão publicada em https://comissoesdp.web.app com seu navegador.
+- Entre com sua conta ou solicite acesso na primeira vez.
+- Novas contas aguardam aprovação de um Administrador antes de liberar o uso.
 
 SEGURANÇA E PRIVACIDADE
-- Planilhas, CPF, cliente, contrato e valores individuais são processados localmente.
-- O Firestore recebe somente contas, permissões, auditoria, totais agregados, versões e impressões SHA-256.
-- As impressões permitem reconhecer o mesmo arquivo mesmo que ele seja baixado novamente com outro nome.
+- Planilhas, CPF, cliente, contrato e valores individuais são processados
+  somente no navegador do usuário — nunca saem do computador de quem está
+  usando o sistema.
+- O Firestore recebe somente contas, permissões, auditoria e totais agregados.
+- O nome e a comissão de cada vendedor (usados no ranking) são cifrados no
+  navegador antes de qualquer sincronização com a nuvem.
+- Sem uma configuração válida do Firebase, o aplicativo bloqueia todo acesso —
+  não existe modo local com privilégios de administrador.
 - A configuração do Firebase está documentada em docs\CONFIGURACAO_FIREBASE.md.
-- Sem um arquivo .env configurado na compilação, o programa funciona em Modo local e não sincroniza dados.
 
 PROCESSAMENTO
-- Antes de gerar, o lote inteiro é analisado em busca de duplicidades confirmadas e possíveis.
-- A revisão é obrigatória, mas nenhuma linha é removida ou alterada automaticamente.
-- Relatórios existentes nunca são sobrescritos; novas execuções recebem versões _v2, _v3 etc.
-- É possível cancelar com segurança e tentar novamente.
+- Antes de gerar, o lote inteiro é analisado em busca de duplicidades
+  confirmadas e possíveis.
+- A revisão é obrigatória, mas nenhuma linha é removida ou alterada
+  automaticamente.
+- Relatórios existentes nunca são sobrescritos; novas execuções recebem
+  versões _v2, _v3 etc.
 - As regras de cálculo de comissão foram preservadas.
 
 ACESSOS E HISTÓRICO
 - Perfis disponíveis: Administrador e Operador.
 - Novas contas aguardam aprovação de um Administrador.
+- Promover alguém a Administrador exige confirmação explícita (digitar o
+  e-mail da conta) e fica registrado na Auditoria.
 - Somente Administradores veem usuários, configurações e lixeira.
-- Registros ficam na lixeira por 30 dias; os arquivos Excel/PDF não são apagados.
+- Registros ficam na lixeira por 30 dias; os arquivos Excel/PDF gerados não
+  são apagados (eles nunca chegam a ser enviados para a nuvem).
 
-COMPILAÇÃO PARA DESENVOLVEDORES
-1. Instale Node.js e execute npm ci.
-2. Use Compilar.bat ou npm run build:app.
-3. Os portáteis x64 e ia32 serão criados em release.
-4. Consulte docs\ARQUITETURA.md para conhecer a organização e os limites de cada módulo.
+DESENVOLVIMENTO
+1. Instale Node.js 18+ e execute npm ci.
+2. Use npm run dev para desenvolvimento local ou npm run build para gerar
+   os arquivos estáticos de produção em dist/.
+3. Consulte docs\ARQUITETURA.md para conhecer a organização e os limites de
+   cada módulo.
