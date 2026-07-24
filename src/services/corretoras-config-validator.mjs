@@ -1,5 +1,6 @@
 export function isValidCorretorasConfig(config) {
   if (!config || typeof config !== 'object' || Array.isArray(config)) return false;
+  if (Object.keys(config).length > 500) return false;
   return Object.entries(config).every(([brokerName, aliases]) =>
     typeof brokerName === 'string' &&
     brokerName.trim().length > 0 &&
