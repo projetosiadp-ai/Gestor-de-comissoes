@@ -153,6 +153,53 @@ html, body {
 .dark .cmp-bname {
   color: var(--text) !important;
 }
+.dark .secondary,
+.dark .ghost,
+.dark .history-row-actions button {
+  background-color: var(--panel) !important;
+  color: var(--text) !important;
+  border-color: var(--line) !important;
+}
+.dark .empty-state {
+  background-color: var(--panel) !important;
+  border-color: var(--line) !important;
+}
+.dark .file-chip {
+  background-color: var(--panel) !important;
+  border-color: var(--line) !important;
+  color: var(--text) !important;
+}
+.dark .cmp-select {
+  background-color: var(--panel) !important;
+  border-color: var(--line) !important;
+  color: var(--text) !important;
+}
+.dark .cmp-toggle {
+  background-color: rgba(11, 117, 226, .14) !important;
+  border-color: #2495ff !important;
+  color: #7cc4ff !important;
+}
+.dark .cmp-toggle:hover {
+  background-color: rgba(11, 117, 226, .22) !important;
+  color: #9ed4ff !important;
+}
+.dark .cmp-toggle.open {
+  background-color: var(--panel) !important;
+  color: var(--muted) !important;
+}
+.dark .cmp-bar-track {
+  background-color: var(--line) !important;
+}
+.dark .cmp-delta.up { background-color: rgba(16, 185, 129, .15) !important; }
+.dark .cmp-delta.down { background-color: rgba(239, 68, 68, .15) !important; }
+.dark .cmp-delta.neutral { background-color: var(--line) !important; }
+.dark .cmp-cell-absent { color: rgba(255, 255, 255, .22) !important; }
+.dark .status.loading { background-color: rgba(11, 117, 226, .14) !important; color: #7cc4ff !important; border-color: rgba(11, 117, 226, .35) !important; }
+.dark .status.success { background-color: rgba(16, 185, 129, .14) !important; color: #34d399 !important; border-color: rgba(16, 185, 129, .35) !important; }
+.dark .status.error { background-color: rgba(239, 68, 68, .14) !important; color: #f87171 !important; border-color: rgba(239, 68, 68, .35) !important; }
+.dark .user-status.approved { background-color: rgba(16, 185, 129, .15) !important; }
+.dark .user-status.pending { background-color: rgba(217, 119, 6, .15) !important; }
+.dark .user-status.rejected { background-color: rgba(225, 29, 72, .15) !important; }
 
 button, input { font: inherit; }
 button { cursor: pointer; }
@@ -319,10 +366,10 @@ h2 { margin-bottom: 5px; font-size: 17px; }
 .compact-panel { padding: 18px 22px; }
 .panel-head, .selection-head, .output-row, .progress-head, .action-row { display: flex; justify-content: space-between; align-items: center; gap: 15px; }
 .metric-grid { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 14px; margin-bottom: 19px; }
-.metric { min-height: 112px; display: flex; align-items: center; gap: 15px; background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 18px; box-shadow: var(--shadow); }
-.metric-icon { width: 51px; height: 51px; border-radius: 50%; display: grid; place-items: center; font-weight: 900; font-size: 21px; flex: 0 0 auto; }
+.metric { container-type: inline-size; min-height: 112px; display: flex; align-items: center; gap: 12px; background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 16px; box-shadow: var(--shadow); }
+.metric-icon { width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; font-weight: 900; font-size: 19px; flex: 0 0 auto; }
 .metric-icon.blue { background: #e2efff; color: #0566d8; }.metric-icon.cyan { background: #dff7ff; color: #008fc7; }.metric-icon.green { background: #e2f8ec; color: #159354; }.metric-icon.amber { background: #fff0d8; color: #cc7800; }
-.metric div { min-width: 0; }.metric small { color: var(--muted); font-weight: 700; display: block; margin-bottom: 6px; }.metric strong { font-size: 24px; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.metric div { min-width: 0; }.metric small { color: var(--muted); font-weight: 700; display: block; margin-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }.metric strong { font-size: clamp(15px, 9.5cqi, 24px); display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.15; }
 .primary, .secondary, .ghost { border-radius: 8px; padding: 10px 15px; border: 1px solid transparent; font-weight: 700; }
 .primary { background: linear-gradient(90deg, #075fc9, #0c7ae8); color: #fff; box-shadow: 0 7px 16px rgba(5,100,216,.2); }.primary:hover { filter: brightness(1.05); }.primary:disabled { opacity: .55; cursor: wait; }
 .primary.large { padding: 13px 24px; min-width: 220px; font-size: 15px; }
