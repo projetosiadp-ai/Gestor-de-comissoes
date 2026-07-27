@@ -16,6 +16,12 @@ import {
 import { readInput, getRowsFromXlsxSheet } from '../lib/reports/input-reader.js';
 import { copyBlock, consolidateCommissionTotalsInWorksheet } from '../lib/reports/workbook-format.js';
 import { getCorretorasConfig } from './configService.js';
+import { getCommissionRules } from './commissionRulesService.js';
+import {
+  findCommissionRuleDivergences,
+  summarizeDivergences,
+  applyCommissionRuleCorrections
+} from '../lib/core/commission-rules.mjs';
 
 async function resolveCorretoraViaConfig(base) {
   const config = await getCorretorasConfig();
@@ -431,7 +437,110 @@ export async function generateIndividualReports(files, sortAlpha, convertNumbers
 
   const possibleDuplicateBrokers = findPossibleDuplicateBrokerPairs(summary.map(s => s.corretora));
 
-  return { summary, errors, generatedFiles, possibleDuplicateBrokers };
+  // Confere o percentual da coluna "Regra" contra as regras cadastradas em
+  // "Regras de comissão". Só gera aviso: os valores do relatório continuam sendo
+  // exatamente os da planilha de origem.
+  let commissionDivergences = [];
+  try {
+    const rules = await getCommissionRules();
+    const found = summary.flatMap(item =>
+      findCommissionRuleDivergences(item.rawBlocks, item.corretora, rules)
+    );
+    commissionDivergences = summarizeDivergences(found);
+  } catch (err) {
+    console.error('Erro ao verificar regras de comissão:', err);
+  }
+
+  return { summary, errors, generatedFiles, possibleDuplicateBrokers, commissionDivergences };
+}
+
+// Refaz as planilhas das corretoras que tinham divergência de percentual, agora com
+// a comissão recalculada (Recebido × percentual cadastrado) e o total do bloco
+// atualizado. As células alteradas ficam destacadas em amarelo com um comentário,
+// para a correção continuar auditável ao lado do arquivo do sistema de origem.
+export async function applyCommissionCorrections(result, convertNumbers = true) {
+  const rules = await getCommissionRules();
+
+  const summary = [];
+  const generatedFiles = [];
+  const allCorrections = [];
+
+  for (const item of result.summary) {
+    const { blocks, corrections } = applyCommissionRuleCorrections(item.rawBlocks, item.corretora, rules);
+
+    if (corrections.length === 0) {
+      summary.push(item);
+      const untouched = result.generatedFiles.find(f => f.corretora === item.corretora);
+      if (untouched) generatedFiles.push(untouched);
+      continue;
+    }
+
+    allCorrections.push(...corrections);
+
+    const wbOut = new ExcelJS.Workbook();
+    wbOut.creator = 'glzn-comercial';
+    wbOut.created = new Date();
+    const wsOut = wbOut.addWorksheet('Comissões Gerais', { views: [{ showGridLines: true }] });
+
+    // Guarda onde cada bloco começou na planilha, para converter (blockIndex,
+    // rowIndex) das correções na linha real da worksheet e destacar a célula.
+    const blockStartRows = [];
+    let nextRow = 1;
+    for (const rows of blocks) {
+      blockStartRows.push(nextRow);
+      nextRow = copyBlock({ type: 'raw', rows }, wsOut, nextRow, convertNumbers);
+    }
+
+    for (const correction of corrections) {
+      const sheetRow = blockStartRows[correction.blockIndex] + correction.rowIndex;
+      for (const col of [correction.colunaRegra, correction.colunaComissao]) {
+        const cell = wsOut.getCell(sheetRow, col + 1);
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF3C7' } };
+        cell.font = { ...(cell.font || {}), bold: true, color: { argb: 'FF92400E' } };
+      }
+      const comissaoCell = wsOut.getCell(sheetRow, correction.colunaComissao + 1);
+      comissaoCell.note = `Corrigido pelo sistema: regra ${correction.regraAnterior}% -> ${correction.regraNova}%. `
+        + `Valor original: ${formatBRL(correction.comissaoAnterior ?? 0)}.`;
+    }
+
+    const consolidation = consolidateCommissionTotalsInWorksheet(wsOut);
+
+    const buffer = await wbOut.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const fileName = `${safeFileName(item.corretora)}.xlsx`;
+    generatedFiles.push({ fileName, blob, corretora: item.corretora });
+
+    const novoTotal = (consolidation.found && consolidation.total > 0) ? consolidation.total : item.total;
+    const delta = novoTotal - (item.totalConsolidado ?? item.total ?? 0);
+
+    summary.push({
+      ...item,
+      rawBlocks: blocks,
+      total: novoTotal,
+      totalConsolidado: novoTotal,
+      totalAnterior: item.totalConsolidado ?? item.total ?? 0,
+      diferencaCorrecao: delta,
+      correcoesAplicadas: corrections.length
+    });
+  }
+
+  // Ordena igual à geração original para a tabela de resultado não embaralhar.
+  summary.sort((a, b) => a.corretora.localeCompare(b.corretora, 'pt-BR'));
+
+  return {
+    ...result,
+    summary,
+    generatedFiles,
+    commissionDivergences: [],
+    appliedCorrections: allCorrections.length,
+    correctedBrokers: summary.filter(s => s.correcoesAplicadas > 0).map(s => ({
+      corretora: s.corretora,
+      correcoes: s.correcoesAplicadas,
+      totalAnterior: s.totalAnterior,
+      totalNovo: s.total,
+      diferenca: s.diferencaCorrecao
+    }))
+  };
 }
 
 export async function parseGeneralInputs(files, onProgress) {

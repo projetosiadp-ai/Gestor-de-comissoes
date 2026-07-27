@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   LayoutDashboard, PlusCircle, History, FileDown, Table, Settings,
-  UserCog, ArchiveRestore, ScrollText, LineChart
+  UserCog, ArchiveRestore, ScrollText, LineChart, Percent
 } from 'lucide-react';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db, firebaseConfigured } from './services/firebaseClient';
@@ -12,6 +12,7 @@ import SavedReports from './pages/SavedReports';
 import PdfSummary from './pages/PdfSummary';
 import GeneralReport from './pages/GeneralReport';
 import ConfigCorretoras from './pages/ConfigCorretoras';
+import CommissionRules from './pages/CommissionRules';
 import AuthScreen from './auth/AuthScreen';
 import { useAuth } from './auth/AuthContext';
 import { subscribeReports, syncReport, trashReport as trashCloudReport } from './services/cloudReports';
@@ -151,6 +152,7 @@ export default function App() {
     'pdf-summary': 'Resumo único das comissões em PDF',
     'general-report': 'Consolidação de planilhas individuais em relatório geral',
     'config-corretoras': 'Mapeamentos e apelidos das corretoras',
+    'commission-rules': 'Percentual esperado por parcela em cada corretora',
     'users': 'Contas, perfis e aprovações',
     'trash': 'Registros excluídos nos últimos 30 dias',
     'audit': 'Eventos operacionais e administrativos',
@@ -165,6 +167,7 @@ export default function App() {
     { id: 'general-report', label: 'Relatório Geral', icon: Table, tooltip: 'Relatório Geral' },
     { id: 'analytics', label: 'Analítica', icon: LineChart, tooltip: 'Analítica detalhada' },
     { id: 'config-corretoras', label: 'Configurar corretoras', icon: Settings, tooltip: 'Configurar corretoras', adminOnly: true },
+    { id: 'commission-rules', label: 'Regras de comissão', icon: Percent, tooltip: 'Percentual esperado por parcela', adminOnly: true },
     { id: 'users', label: 'Usuários', icon: UserCog, tooltip: 'Usuários e acessos', adminOnly: true },
     { id: 'audit', label: 'Auditoria', icon: ScrollText, tooltip: 'Auditoria compartilhada', adminOnly: true },
     { id: 'trash', label: 'Lixeira', icon: ArchiveRestore, tooltip: 'Lixeira de 30 dias', adminOnly: true }
@@ -261,7 +264,12 @@ export default function App() {
             />
           )}
           {activePage === 'config-corretoras' && (
-            <ConfigCorretoras 
+            <ConfigCorretoras
+              addLog={addLog}
+            />
+          )}
+          {activePage === 'commission-rules' && (
+            <CommissionRules
               addLog={addLog}
             />
           )}

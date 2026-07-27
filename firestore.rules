@@ -99,6 +99,14 @@ service cloud.firestore {
         && request.resource.data.config.size() <= 500;
     }
 
+    // Percentual esperado por parcela, global e por corretora. Usado apenas para
+    // avisar sobre divergências no relatório; não altera nenhum valor.
+    function validCommissionRules() {
+      return request.resource.data.keys().hasOnly(['rules'])
+        && request.resource.data.rules is map
+        && request.resource.data.rules.keys().hasOnly(['default', 'brokers']);
+    }
+
     function validTeamKey() {
       return request.resource.data.keys().hasOnly(['key', 'createdAt', 'createdByUid'])
         && request.resource.data.keys().hasAll(['key', 'createdAt', 'createdByUid'])
@@ -166,6 +174,7 @@ service cloud.firestore {
       allow write: if isAdmin()
         && (
           (configId == 'corretoras_config' && validCorretorasConfig()) ||
+          (configId == 'commission_rules' && validCommissionRules()) ||
           (configId == 'team_key' && validTeamKey())
         );
     }
