@@ -48,7 +48,7 @@ service cloud.firestore {
       return [
         'id', 'month', 'label', 'date', 'createdAt', 'createdByUid', 'createdByName',
         'brokers', 'sellers', 'totalValue', 'inputFiles', 'errors',
-        'encryptedSellerData', 'deletedAt', 'deletedByUid'
+        'encryptedSellerData', 'convertNumbers', 'deletedAt', 'deletedByUid'
       ];
     }
 
@@ -69,8 +69,28 @@ service cloud.firestore {
         && request.resource.data.errors is number
         && request.resource.data.encryptedSellerData is string
         && request.resource.data.encryptedSellerData.size() <= 200000
+        && request.resource.data.convertNumbers is bool
         && request.resource.data.deletedAt == null
         && request.resource.data.deletedByUid == null;
+    }
+
+    function safeBrokerDetailFields() {
+      return ['corretora', 'encryptedRows', 'createdByUid'];
+    }
+
+    // Linhas brutas e detalhadas de venda de UMA corretora de um relatório salvo,
+    // cifradas com a chave de equipe (ver CLAUDE.md, decisão de 2026-07-27). Um
+    // documento por corretora (em vez de um campo no saved_reports pai) para não
+    // esbarrar no limite de 1 MiB por documento do Firestore em relatórios com
+    // muitas corretoras.
+    function validBrokerDetail() {
+      return request.resource.data.keys().hasOnly(safeBrokerDetailFields())
+        && request.resource.data.keys().hasAll(safeBrokerDetailFields())
+        && request.resource.data.createdByUid == request.auth.uid
+        && request.resource.data.corretora is string
+        && request.resource.data.corretora.size() <= 200
+        && request.resource.data.encryptedRows is string
+        && request.resource.data.encryptedRows.size() <= 900000;
     }
 
     function validCorretorasConfig() {
@@ -131,6 +151,14 @@ service cloud.firestore {
       allow update: if isApproved() && validSavedReport()
         && (resource.data.createdByUid == request.auth.uid || isAdmin());
       allow delete: if isAdmin();
+
+      match /broker_details/{brokerId} {
+        allow read: if isApproved();
+        allow create: if isApproved() && validBrokerDetail();
+        allow update: if isApproved() && validBrokerDetail()
+          && (resource.data.createdByUid == request.auth.uid || isAdmin());
+        allow delete: if isAdmin();
+      }
     }
 
     match /system_config/{configId} {

@@ -30,3 +30,24 @@ test('throws without an authenticated user', async () => {
   const { sanitizeSavedReportForCloud } = await import(moduleUrl.href);
   assert.throws(() => sanitizeSavedReportForCloud({ id: 'x' }, {}, 'blob'));
 });
+
+test('broker detail sanitizer keeps only the allowed fields and enforces the size cap', async () => {
+  const moduleUrl = pathToFileURL(path.resolve(__dirname, '../../src/services/report-sanitizer.mjs'));
+  const { sanitizeBrokerDetailForCloud, MAX_ENCRYPTED_BROKER_DETAIL_LENGTH } = await import(moduleUrl.href);
+
+  const sanitized = sanitizeBrokerDetailForCloud('D TREMANTI', 'aWZ2.Y2lwaGVy', { uid: 'user-1' });
+  assert.deepEqual(Object.keys(sanitized).sort(), ['corretora', 'createdByUid', 'encryptedRows'].sort());
+  assert.equal(sanitized.corretora, 'D TREMANTI');
+  assert.equal(sanitized.encryptedRows, 'aWZ2.Y2lwaGVy');
+  assert.equal(sanitized.createdByUid, 'user-1');
+
+  const oversized = 'a'.repeat(MAX_ENCRYPTED_BROKER_DETAIL_LENGTH + 10);
+  const truncated = sanitizeBrokerDetailForCloud('D TREMANTI', oversized, { uid: 'user-1' });
+  assert.equal(truncated.encryptedRows.length, MAX_ENCRYPTED_BROKER_DETAIL_LENGTH);
+});
+
+test('broker detail sanitizer throws without an authenticated user', async () => {
+  const moduleUrl = pathToFileURL(path.resolve(__dirname, '../../src/services/report-sanitizer.mjs'));
+  const { sanitizeBrokerDetailForCloud } = await import(moduleUrl.href);
+  assert.throws(() => sanitizeBrokerDetailForCloud('D TREMANTI', 'blob', {}));
+});
