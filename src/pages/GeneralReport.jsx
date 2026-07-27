@@ -5,6 +5,18 @@ import {
 } from 'lucide-react';
 import { formatBRL } from '../App';
 import { parseGeneralInputs, generateGeneralExcel } from '../services/reportGenerator';
+import { areLikelySameBroker } from '../lib/core/text.js';
+
+function findPossibleDuplicateBrokerPairs(names) {
+  const relevant = names.filter(n => n && n !== 'Corretora não identificada');
+  const pairs = [];
+  for (let i = 0; i < relevant.length; i++) {
+    for (let j = i + 1; j < relevant.length; j++) {
+      if (areLikelySameBroker(relevant[i], relevant[j])) pairs.push([relevant[i], relevant[j]]);
+    }
+  }
+  return pairs;
+}
 
 export default function GeneralReport({ refreshHistory, addLog }) {
   const log = (type, msg) => {
@@ -20,6 +32,7 @@ export default function GeneralReport({ refreshHistory, addLog }) {
 
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [corretoras, setCorretoras] = useState([]);
+  const [possibleDuplicateBrokers, setPossibleDuplicateBrokers] = useState([]);
   const [parsing, setParsing] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [status, setStatus] = useState({ type: '', message: '' });
@@ -50,6 +63,7 @@ export default function GeneralReport({ refreshHistory, addLog }) {
 
     setSelectedFiles(filtered);
     setCorretoras([]);
+    setPossibleDuplicateBrokers([]);
     setParsing(true);
     setStatus({ type: 'loading', message: 'Lendo planilhas de corretoras e agrupando...' });
     log('info', `Iniciando leitura de ${filtered.length} planilhas...`);
@@ -83,6 +97,7 @@ export default function GeneralReport({ refreshHistory, addLog }) {
 
       const list = Object.values(groupedMap).sort((a, b) => a.corretora.localeCompare(b.corretora, 'pt-BR'));
       setCorretoras(list);
+      setPossibleDuplicateBrokers(findPossibleDuplicateBrokerPairs(list.map(c => c.corretora)));
 
       if (list.length > 0) {
         setStatus({ type: 'success', message: `${list.length} corretoras carregadas com sucesso.` });
@@ -297,6 +312,34 @@ export default function GeneralReport({ refreshHistory, addLog }) {
           )}
           <div style={{ flex: 1 }}>
             {status.message}
+          </div>
+        </div>
+      )}
+
+      {possibleDuplicateBrokers.length > 0 && (
+        <div style={{
+          background: '#fffbeb',
+          border: '1px solid #fde68a',
+          borderRadius: '12px',
+          padding: '16px 20px',
+          marginTop: '20px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '8px'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <span style={{ fontSize: '18px' }}>⚠️</span>
+            <strong style={{ color: '#92400e', fontSize: '14px' }}>Possíveis corretoras duplicadas</strong>
+          </div>
+          <div style={{ color: '#78350f', fontSize: '13px', lineHeight: '1.6' }}>
+            Os nomes abaixo parecem ser a mesma corretora escrita de forma diferente. O sistema NÃO uniu
+            essas automaticamente por segurança — confira antes de enviar e, se forem a mesma, cadastre
+            o apelido em "Configurar Corretoras":
+            <ul style={{ margin: '8px 0 0 20px', padding: 0 }}>
+              {possibleDuplicateBrokers.map(([a, b], idx) => (
+                <li key={idx}>"{a}" e "{b}"</li>
+              ))}
+            </ul>
           </div>
         </div>
       )}

@@ -291,6 +291,7 @@ export default function NewReport({ refreshHistory, addLog, onReportCreated, kno
         inputFiles: filesArray.length,
         totalFiles: res.summary.length,
         errors: res.errors,
+        convertNumbers,
         createdByUid: session.actor?.uid || 'local',
         createdByName: session.actor?.displayName || session.actor?.email || 'Usuário'
       };
@@ -611,6 +612,34 @@ export default function NewReport({ refreshHistory, addLog, onReportCreated, kno
             <AlertCircle size={16} />
           )}
           <span>{status.message}</span>
+        </div>
+      )}
+
+      {result?.possibleDuplicateBrokers?.length > 0 && (
+        <div style={{
+          background: '#fffbeb',
+          border: '1px solid #fde68a',
+          borderRadius: '12px',
+          padding: '16px 20px',
+          marginBottom: '20px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '8px'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <span style={{ fontSize: '18px' }}>⚠️</span>
+            <strong style={{ color: '#92400e', fontSize: '14px' }}>Possíveis corretoras duplicadas</strong>
+          </div>
+          <div style={{ color: '#78350f', fontSize: '13px', lineHeight: '1.6' }}>
+            Os nomes abaixo parecem ser a mesma corretora escrita de forma diferente. O sistema NÃO uniu
+            essas automaticamente por segurança — confira antes de enviar e, se forem a mesma, cadastre
+            o apelido em "Configurar Corretoras":
+            <ul style={{ margin: '8px 0 0 20px', padding: 0 }}>
+              {result.possibleDuplicateBrokers.map(([a, b], idx) => (
+                <li key={idx}>"{a}" e "{b}"</li>
+              ))}
+            </ul>
+          </div>
         </div>
       )}
 

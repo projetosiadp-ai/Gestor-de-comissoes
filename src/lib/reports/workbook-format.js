@@ -53,6 +53,15 @@ function convertBlockStringsToNumbers(worksheet, startRow, lastRow, lastCol) {
   }
 }
 
+// Marcador técnico interno do sistema de origem (ex: "Comissao_normal") que aparece
+// solto entre o total e a tabela nos arquivos exportados — nunca foi pensado como
+// conteúdo visível, então é apagado ao formatar o bloco.
+function isInternalMarkerRow(row) {
+  const values = (row.values || []).filter(v => v !== null && v !== undefined && String(v).trim() !== '');
+  if (values.length !== 1) return false;
+  return /^Comissao_[A-Za-zÀ-ÿ]+$/.test(String(values[0]).trim());
+}
+
 function applyStandardBlockStyle(worksheet, startRow, lastRow, lastCol) {
   const widths = [12, 24, 24, 15, 18, 22, 28, 10, 15, 15, 12, 12, 12, 15, 15];
   for (let col = 1; col <= Math.max(lastCol, widths.length); col++) {
@@ -62,6 +71,10 @@ function applyStandardBlockStyle(worksheet, startRow, lastRow, lastCol) {
   worksheet.getRow(startRow).height = 24;
   for (let row = startRow; row <= startRow + 7; row++) {
     worksheet.getRow(row).alignment = { vertical: 'middle', horizontal: 'left', wrapText: false };
+    const worksheetRow = worksheet.getRow(row);
+    if (isInternalMarkerRow(worksheetRow)) {
+      worksheetRow.eachCell({ includeEmpty: true }, cell => { cell.value = null; });
+    }
   }
   const headerRow = startRow + 8;
   const header = worksheet.getRow(headerRow);
@@ -87,15 +100,6 @@ function applyStandardBlockStyle(worksheet, startRow, lastRow, lastCol) {
         right: { style: 'thin', color: { argb: 'FFE5E7EB' } }
       };
     });
-  }
-  const medium = { style: 'medium', color: { argb: 'FF000000' } };
-  for (let col = 1; col <= lastCol; col++) {
-    worksheet.getCell(startRow, col).border = { ...worksheet.getCell(startRow, col).border, top: medium };
-    worksheet.getCell(lastRow, col).border = { ...worksheet.getCell(lastRow, col).border, bottom: medium };
-  }
-  for (let row = startRow; row <= lastRow; row++) {
-    worksheet.getCell(row, 1).border = { ...worksheet.getCell(row, 1).border, left: medium };
-    worksheet.getCell(row, lastCol).border = { ...worksheet.getCell(row, lastCol).border, right: medium };
   }
 }
 
