@@ -2,9 +2,50 @@
 
 > Documenta o ponto exato do trabalho para retomada em outra sessão. Executado com a
 > skill **superpowers:subagent-driven-development** (um implementador + um revisor por
-> tarefa, mais uma revisão final whole-branch). **Última atualização:** 2026-07-24.
+> tarefa, mais uma revisão final whole-branch). **Última atualização:** 2026-07-27.
 
-## STATUS GERAL: implementação 100% concluída e revisada. Faltam só os passos de FINALIZAÇÃO (merge + deploy), que dependem de autorização sua.
+## STATUS GERAL: TRABALHO CONCLUÍDO. Branch mesclado no `main` e regras do Firestore deployadas em produção.
+
+## ⚠️ Decisão explícita do usuário (2026-07-27): detalhe completo de vendas VOLTA a ser sincronizado
+
+A Fase 1 acima definiu que CPF, nome de cliente, contrato e parcela nunca deveriam sair do
+navegador — só o agregado por vendedor (nome + total) ia pro Firestore, cifrado. Em 2026-07-27
+o usuário pediu explicitamente para reverter isso para a coleção `saved_reports`: quer que o
+arquivo baixado do histórico ("Relatórios Salvos") saia **idêntico** ao gerado na hora em "Novo
+Relatório" — com todas as colunas (Código, Responsável, Usuário, Contrato, CPF, Empresa, Plano,
+Parcela, Vencimento, Pagamento, Regra, Recebido, Comissão, Mensalidade, Data de Adesão), não só
+o total agregado. Justificativa dada pelo usuário: só usuários aprovados da própria empresa têm
+acesso ao sistema, então o risco aceito é diferente do cenário original.
+
+**O que foi implementado para isso:**
+- `saved_reports/{reportId}` continua só com o agregado (`encryptedSellerData`, inalterado) —
+  usado por Analytics/Dashboard/MonthComparison para ranking de vendedor.
+- Nova subcoleção `saved_reports/{reportId}/broker_details/{brokerId}` — **um documento por
+  corretora** (não um campo no doc pai) para não estourar o limite de 1 MiB/documento do
+  Firestore em relatórios com muitas corretoras. Cada doc tem `{ corretora, encryptedRows,
+  createdByUid }`, com `encryptedRows` sendo as linhas brutas (CPF/contrato/parcela/etc. inclusos)
+  de cada arquivo original daquela corretora, cifradas com a mesma chave de equipe (AES-GCM,
+  `teamCipher.mjs`) já usada para o agregado.
+- `reportGenerator.js` (`generateIndividualReports`) agora captura essas linhas brutas por
+  corretora em `summary[].rawBlocks`; `historyService.js` (`saveReport`) as cifra e grava na
+  subcoleção; `exportSavedReport.js` as busca e reconstrói o Excel completo via a mesma
+  `copyBlock`/`applyStandardBlockStyle`/`consolidateCommissionTotalsInWorksheet` usadas por
+  "Novo Relatório", em vez do resumo "Vendedor / Responsável | Comissão" de antes.
+- Campo novo `convertNumbers` (bool) persistido no doc principal do `saved_reports`, pra
+  reconstrução respeitar a mesma opção usada na hora da geração original. Relatórios salvos
+  antes deste campo existir assumem `true` (padrão da tela).
+- `firestore.rules` ganhou `safeBrokerDetailFields()`/`validBrokerDetail()` e o match block da
+  subcoleção; `deleteReport()` agora apaga os docs da subcoleção antes do doc pai (Firestore não
+  faz cascade delete sozinho).
+- Relatórios salvos **antes** desta mudança não têm a subcoleção — `exportSavedReport.js` cai de
+  volta no resumo agregado antigo automaticamente quando não encontra detalhe salvo (sem erro).
+
+**Consequência que o usuário aceitou conscientemente:** CPF, nome de cliente e valor de parcela
+individual agora ficam de novo no Firestore (cifrados, mas acessíveis a qualquer usuário aprovado
+que tenha a chave de equipe — igual ao ranking já era). O critério de sucesso original da Fase 1
+("nenhum dado de nome+comissão individual em texto puro") deixou de valer integralmente para
+`saved_reports`: os dados não estão em texto puro (estão cifrados), mas o vazamento de escopo —
+detalhe transacional completo em vez de só agregado — foi uma escolha informada, não um bug.
 
 ## O que é este trabalho
 
@@ -42,26 +83,26 @@ Hardening de segurança do "Gestor de Comissões" (SPA React+Vite + Firebase). D
 
 Revisor no modelo mais capaz (opus) verificou o branch inteiro (base `9ff1ff1`..HEAD): **0 Critical, 0 Important.** Confirmou os 5 critérios de sucesso do spec, integração limpa (fluxo de cifragem ponta a ponta, sem drift entre sanitizer/regra/teste — 15 campos batem), e a remoção real do bypass de auth. Os achados Minor foram triados como "ship as-is"; os 3 mais baratos foram corrigidos em `c28e455` (guarda de e-mail vazio na promoção, comentário no cache da chave, nome enganoso + isolamento de 2 testes do emulador).
 
-## ⚠️ PENDÊNCIAS DE FINALIZAÇÃO (precisam de você) — É AQUI QUE SE RETOMA
+## ✅ FINALIZAÇÃO — concluída em 2026-07-27
 
-### 1. Alerta OPERACIONAL de deploy (importante — decisão sua)
-As novas regras só validam **escritas**. Documentos em `saved_reports` gravados **antes** deste branch ainda contêm nome+comissão de vendedor em **texto puro** e continuam legíveis por qualquer usuário aprovado. Antes/junto do deploy das regras, é preciso **verificar se existem esses registros legados no projeto `comissoesdp` e purgá-los ou regravá-los** (regravar via app já cifra). Sem isso, o critério "nada de PII em texto puro" vale só para dados novos, não para o histórico. Isto é passo operacional, não correção de código.
+### 1. Dados legados em `saved_reports` — verificado, nada a fazer
+Auditoria read-only no projeto `comissoesdp` (script temporário, login com a conta admin do `.env`) mostrou que as coleções `saved_reports` e `reports` estavam **vazias (0 documentos)** em produção. Não havia nenhum registro histórico com nome+comissão em texto puro para purgar ou regravar. O critério "nada de PII em texto puro" vale integralmente, inclusive para o histórico (porque não existe histórico).
 
-### 2. Finalizar o branch (merge / PR)
-Usar a skill `superpowers:finishing-a-development-branch`. **Atenção:** o branch inclui o commit pré-existente `9ff1ff1` ("chore: atualização no site") que NÃO está no `main` (era o ponto de partida do worktree). Ao mesclar, ele vai junto — confirmar com o usuário se é o esperado. Todo o resto (`64a934c`..`c28e455`) é o trabalho de hardening + docs.
+### 2. Branch mesclado no `main`
+Commit `daa91b0` ("merge: integra hardening de segurança do Firebase"). `main` sincronizado com `origin/main`, árvore limpa.
 
-### 3. Deploy das regras Firestore
-`npx firebase-tools deploy --only firestore:rules --project comissoesdp`. **Efeito em produção (ambiente compartilhado) — só executar com autorização explícita do usuário.** Não foi feito.
+### 3. Regras do Firestore deployadas em produção
+`npx firebase-tools deploy --only firestore:rules --project comissoesdp` executado com sucesso em 2026-07-27. As regras endurecidas (validação de schema, bloqueio de bypass de admin, proteção de `system_config`/`audit`) estão ativas em produção.
 
 ## Follow-ups de CI adiados (não bloqueiam merge; registrados no ledger)
 - Suíte do emulador (Task 8) só roda com Java: rodar `npm run test:rules` num ambiente com JRE 11+ para validar as regras de verdade.
 - Ampliar a suíte do emulador: testes de escrita da coleção `reports` (validNewReport hoje sem cobertura), um teste positivo "admin PODE atualizar um usuário", e testes de rejeição por tamanho de `encryptedSellerData` / `date is timestamp`.
 - Cobertura da Task 3 (payload do `setDoc` / degradação de leitura sem chave ou blob inválido) — hoje garantida por leitura + testes de unidade do sanitizer + a regra `hasOnly`; um teste de integração com mock do Firestore seria um extra.
 
-## Critérios de sucesso (do spec) — todos atendidos no código
-- Nenhum nome+comissão individual em texto puro no Firestore. ✅ (Task 3; ⚠️ ver alerta de deploy #1 sobre dados legados)
-- Todas as coleções com validação de schema nas regras. ✅ (Task 4)
-- Suíte de emulador cobrindo comportamento real das regras. ✅ escrita; ⏳ validar em CI com Java (Task 8)
+## Critérios de sucesso (do spec) — todos atendidos, inclusive em produção
+- Nenhum nome+comissão individual em texto puro no Firestore. ✅ (Task 3; confirmado sem dados legados em produção)
+- Todas as coleções com validação de schema nas regras. ✅ (Task 4; regras deployadas em produção)
+- Suíte de emulador cobrindo comportamento real das regras. ✅ escrita; ⏳ validar em CI com Java (Task 8, não bloqueante)
 - Nenhum caminho produz sessão privilegiada sem Firebase Auth. ✅ (Task 6, verificado no navegador)
 - Repositório sem código/doc de arquitetura Electron. ✅ (Task 9; `npm test` 100% verde)
 
