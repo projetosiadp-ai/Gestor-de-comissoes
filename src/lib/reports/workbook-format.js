@@ -21,7 +21,7 @@ function normalizeHeaderName(value) {
 function shouldConvertColumn(header) {
   const normalized = normalizeHeaderName(header);
   return normalized === 'PARCELA' || normalized === 'RECEBIDO' || normalized === 'COMISSAO'
-    || normalized === 'MENSALIDADE' || normalized === 'REGRA'
+    || normalized === 'MENSALIDADE' || normalized === 'REGRA' || normalized === 'VIDAS'
     || normalized.includes('TOTAL') || normalized.includes('VALOR');
 }
 
@@ -29,7 +29,7 @@ function getNumberFormatForHeader(header, originalValue) {
   const normalized = normalizeHeaderName(header);
   const raw = String(originalValue || '').trim();
   if (normalized === 'REGRA' || raw.endsWith('%')) return '0%';
-  if (normalized === 'PARCELA' || normalized === 'MENSALIDADE') return '0';
+  if (normalized === 'PARCELA' || normalized === 'MENSALIDADE' || normalized === 'VIDAS') return '0';
   return '#,##0.00';
 }
 
@@ -42,11 +42,24 @@ function convertCellToNumberIfNeeded(cell, header) {
   cell.numFmt = getNumberFormatForHeader(header, original);
 }
 
+// A seção PJ (ver applyTableSectionBorders) introduz um segundo cabeçalho com
+// colunas diferentes do cabeçalho principal do bloco; sempre que uma nova linha
+// de cabeçalho aparece (começa com "Código"), os nomes de coluna usados pra
+// decidir o que converter são atualizados a partir dali.
+function isHeaderRow(worksheet, row, lastCol) {
+  return normalizeHeaderName(worksheet.getCell(row, 1).value) === 'CODIGO';
+}
+
 function convertBlockStringsToNumbers(worksheet, startRow, lastRow, lastCol) {
   const headerRowNumber = startRow + 8;
-  const headers = [];
+  let headers = [];
   for (let col = 1; col <= lastCol; col++) headers[col] = worksheet.getCell(headerRowNumber, col).value;
   for (let row = headerRowNumber + 1; row <= lastRow; row++) {
+    if (isHeaderRow(worksheet, row, lastCol)) {
+      headers = [];
+      for (let col = 1; col <= lastCol; col++) headers[col] = worksheet.getCell(row, col).value;
+      continue;
+    }
     for (let col = 1; col <= lastCol; col++) {
       convertCellToNumberIfNeeded(worksheet.getCell(row, col), headers[col]);
     }
@@ -103,6 +116,82 @@ function applyStandardBlockStyle(worksheet, startRow, lastRow, lastCol) {
   }
 }
 
+// A seção "PJ" ao final de um bloco tem seu próprio cabeçalho (Código, Empresa,
+// Parcela, Vencimento, Pagamento, Recebido, Regra, Comissão, Vidas, Mensalidade),
+// diferente do cabeçalho principal do bloco. applyStandardBlockStyle já estilizou
+// essa linha como dado comum (borda cinza-clara); aqui ela vira cabeçalho de
+// verdade (negrito, fundo cinza, borda), igual ao cabeçalho principal.
+function isPjLabelRow(row) {
+  const values = (row.values || []).filter(v => v !== null && v !== undefined && String(v).trim() !== '');
+  return values.length === 1 && String(values[0]).trim().toUpperCase() === 'PJ';
+}
+
+const THICK_BORDER = { style: 'medium', color: { argb: 'FF000000' } };
+
+// Desenha uma borda mais grossa só no perímetro externo da tabela (topo, base,
+// laterais), preservando as bordas finas internas já aplicadas célula a célula.
+function applyOuterBorder(worksheet, topRow, bottomRow, leftCol, rightCol) {
+  for (let row = topRow; row <= bottomRow; row++) {
+    for (let col = leftCol; col <= rightCol; col++) {
+      const cell = worksheet.getCell(row, col);
+      const border = { ...(cell.border || {}) };
+      if (row === topRow) border.top = THICK_BORDER;
+      if (row === bottomRow) border.bottom = THICK_BORDER;
+      if (col === leftCol) border.left = THICK_BORDER;
+      if (col === rightCol) border.right = THICK_BORDER;
+      cell.border = border;
+    }
+  }
+}
+
+// Última coluna com valor no cabeçalho de uma tabela (a tabela PJ tem menos
+// colunas que a tabela principal do bloco, então a borda externa não deve se
+// estender pelas colunas vazias à direita).
+function lastHeaderColumn(worksheet, headerRow, maxCol) {
+  let last = 1;
+  for (let col = 1; col <= maxCol; col++) {
+    const value = worksheet.getCell(headerRow, col).value;
+    if (value !== null && value !== undefined && String(value).trim() !== '') last = col;
+  }
+  return last;
+}
+
+// Estiliza o cabeçalho próprio da seção PJ (se existir) e desenha a barra
+// externa ao redor de cada tabela do bloco: só a principal, ou a principal +
+// PJ quando o bloco tiver as duas.
+function applyTableSectionBorders(worksheet, startRow, lastRow, lastCol) {
+  const mainHeaderRow = startRow + 8;
+  let pjLabelRow = null;
+  for (let row = mainHeaderRow + 1; row <= lastRow; row++) {
+    if (isPjLabelRow(worksheet.getRow(row))) { pjLabelRow = row; break; }
+  }
+
+  if (pjLabelRow === null) {
+    applyOuterBorder(worksheet, mainHeaderRow, lastRow, 1, lastHeaderColumn(worksheet, mainHeaderRow, lastCol));
+    return;
+  }
+
+  const mainSectionEnd = Math.max(mainHeaderRow, pjLabelRow - 2);
+  applyOuterBorder(worksheet, mainHeaderRow, mainSectionEnd, 1, lastHeaderColumn(worksheet, mainHeaderRow, lastCol));
+
+  worksheet.getRow(pjLabelRow).font = { bold: true, size: 12 };
+  const pjHeaderRow = pjLabelRow + 1;
+  if (pjHeaderRow > lastRow) return;
+
+  const headerRow = worksheet.getRow(pjHeaderRow);
+  headerRow.height = 28;
+  headerRow.eachCell({ includeEmpty: true }, cell => {
+    cell.font = { bold: true, color: { argb: 'FF000000' } };
+    cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: false };
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFBFBFBF' } };
+    cell.border = {
+      top: { style: 'thin' }, left: { style: 'thin' },
+      bottom: { style: 'thin' }, right: { style: 'thin' }
+    };
+  });
+  applyOuterBorder(worksheet, pjHeaderRow, lastRow, 1, lastHeaderColumn(worksheet, pjHeaderRow, lastCol));
+}
+
 function copyXlsxBlock(sourceSheet, targetSheet, startRow, convertNumbers) {
   const lastRow = getLastUsedRow(sourceSheet);
   const lastCol = getLastUsedCol(sourceSheet);
@@ -125,6 +214,7 @@ function copyXlsxBlock(sourceSheet, targetSheet, startRow, convertNumbers) {
     } catch (_) {}
   }
   applyStandardBlockStyle(targetSheet, startRow, startRow + lastRow - 1, lastCol);
+  applyTableSectionBorders(targetSheet, startRow, startRow + lastRow - 1, lastCol);
   if (convertNumbers) convertBlockStringsToNumbers(targetSheet, startRow, startRow + lastRow - 1, lastCol);
   return startRow + lastRow + 3;
 }
@@ -137,6 +227,7 @@ function copyHtmlBlock(item, targetSheet, startRow, convertNumbers) {
   });
   const lastRow = startRow + item.rows.length - 1;
   applyStandardBlockStyle(targetSheet, startRow, lastRow, lastCol);
+  applyTableSectionBorders(targetSheet, startRow, lastRow, lastCol);
   if (convertNumbers) convertBlockStringsToNumbers(targetSheet, startRow, lastRow, lastCol);
   return lastRow + 3;
 }

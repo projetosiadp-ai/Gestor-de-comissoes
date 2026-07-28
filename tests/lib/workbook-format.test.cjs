@@ -53,13 +53,31 @@ test('applyStandardBlockStyle keeps the header row and data grid borders', async
   const ws = wb.addWorksheet('Comissões Gerais');
   copyBlock({ type: 'raw', rows: buildBlockRows() }, ws, 1, false);
 
+  // Topo do cabeçalho é a borda externa da tabela (mais grossa); a base do
+  // cabeçalho é interna (linha 9 não é a última linha da tabela) e continua fina.
   const headerCell = ws.getRow(9).getCell(1);
-  assert.equal(headerCell.border.top.style, 'thin');
+  assert.equal(headerCell.border.top.style, 'medium');
+  assert.equal(headerCell.border.bottom.style, 'thin');
   assert.equal(headerCell.fill.fgColor.argb, 'FFBFBFBF');
 
   const dataCell = ws.getRow(10).getCell(1);
   assert.equal(dataCell.border.top.style, 'thin');
   assert.equal(dataCell.border.top.color.argb, 'FFE5E7EB');
+});
+
+test('applyTableSectionBorders draws an outer border around the whole table', async () => {
+  const { copyBlock } = await loadModule();
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('Comissões Gerais');
+  copyBlock({ type: 'raw', rows: buildBlockRows() }, ws, 1, false);
+
+  // Perímetro (linha 9 = topo do cabeçalho, linha 10 = base dos dados,
+  // colunas 1 e 4 = laterais) fica com borda grossa.
+  assert.equal(ws.getRow(9).getCell(1).border.top.style, 'medium');
+  assert.equal(ws.getRow(9).getCell(1).border.left.style, 'medium');
+  assert.equal(ws.getRow(9).getCell(4).border.right.style, 'medium');
+  assert.equal(ws.getRow(10).getCell(1).border.bottom.style, 'medium');
+  assert.equal(ws.getRow(10).getCell(1).border.left.style, 'medium');
 });
 
 test('a genuinely blank row inside the info block that is not the internal marker is left alone', async () => {
