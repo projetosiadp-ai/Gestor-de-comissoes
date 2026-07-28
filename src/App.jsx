@@ -6,6 +6,7 @@ import {
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db, firebaseConfigured } from './services/firebaseClient';
 import MaintenanceScreen from './components/MaintenanceScreen';
+import PageLoadErrorBoundary from './components/PageLoadErrorBoundary';
 import Dashboard from './pages/Dashboard';
 import AuthScreen from './auth/AuthScreen';
 import { useAuth } from './auth/AuthContext';
@@ -218,6 +219,7 @@ export default function App() {
         />
 
         <div className="content">
+          <PageLoadErrorBoundary>
           <Suspense fallback={<div className="status loading">Carregando…</div>}>
             {activePage === 'dashboard' && (
               <Dashboard
@@ -271,6 +273,7 @@ export default function App() {
             {activePage === 'audit' && <AuditLog />}
             {activePage === 'trash' && <Trash cloudReports={cloudReports} refreshHistory={refreshHistory} />}
           </Suspense>
+          </PageLoadErrorBoundary>
         </div>
       </main>
 
