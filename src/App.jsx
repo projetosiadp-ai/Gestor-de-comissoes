@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, lazy, Suspense } from 'react';
 import {
   LayoutDashboard, PlusCircle, History, FileDown, Table, Settings,
   UserCog, ArchiveRestore, ScrollText, LineChart
@@ -7,22 +7,23 @@ import { doc, onSnapshot } from 'firebase/firestore';
 import { db, firebaseConfigured } from './services/firebaseClient';
 import MaintenanceScreen from './components/MaintenanceScreen';
 import Dashboard from './pages/Dashboard';
-import NewReport from './pages/NewReport';
-import SavedReports from './pages/SavedReports';
-import PdfSummary from './pages/PdfSummary';
-import GeneralReport from './pages/GeneralReport';
-import ConfigCorretoras from './pages/ConfigCorretoras';
 import AuthScreen from './auth/AuthScreen';
 import { useAuth } from './auth/AuthContext';
 import { subscribeReports, syncReport, trashReport as trashCloudReport } from './services/cloudReports';
 import { getSavedReports, deleteReport as deleteLocalReport } from './services/historyService';
-import UserManagement from './pages/UserManagement';
-import Trash from './pages/Trash';
-import AuditLog from './pages/AuditLog';
-import Analytics from './pages/Analytics';
 import Sidebar from './components/layout/Sidebar';
 import Topbar from './components/layout/Topbar';
 import LogConsole from './components/layout/LogConsole';
+
+const NewReport = lazy(() => import('./pages/NewReport'));
+const SavedReports = lazy(() => import('./pages/SavedReports'));
+const PdfSummary = lazy(() => import('./pages/PdfSummary'));
+const GeneralReport = lazy(() => import('./pages/GeneralReport'));
+const ConfigCorretoras = lazy(() => import('./pages/ConfigCorretoras'));
+const UserManagement = lazy(() => import('./pages/UserManagement'));
+const Trash = lazy(() => import('./pages/Trash'));
+const AuditLog = lazy(() => import('./pages/AuditLog'));
+const Analytics = lazy(() => import('./pages/Analytics'));
 
 export function formatBRL(value) {
   return Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -217,57 +218,59 @@ export default function App() {
         />
 
         <div className="content">
-          {activePage === 'dashboard' && (
-            <Dashboard 
-              savedReports={savedReports} 
-              onNavigate={setActivePage} 
-              refreshHistory={refreshHistory}
-              isAdmin={session.isAdmin}
-              onTrashReport={handleTrashReport}
-            />
-          )}
-          {activePage === 'new-report' && (
-            <NewReport 
-              refreshHistory={refreshHistory}
-              addLog={addLog}
-              onReportCreated={handleReportCreated}
-              knownReports={savedReports}
-            />
-          )}
-          {activePage === 'saved-reports' && (
-            <SavedReports 
-              savedReports={savedReports} 
-              refreshHistory={refreshHistory}
-              onNavigate={setActivePage}
-              isAdmin={session.isAdmin}
-              onTrashReport={handleTrashReport}
-              onReportCreated={handleReportCreated}
-            />
-          )}
-          {activePage === 'pdf-summary' && (
-            <PdfSummary 
-              addLog={addLog}
-            />
-          )}
-          {activePage === 'general-report' && (
-            <GeneralReport 
-              refreshHistory={refreshHistory}
-              addLog={addLog}
-            />
-          )}
-          {activePage === 'analytics' && (
-            <Analytics 
-              savedReports={savedReports} 
-            />
-          )}
-          {activePage === 'config-corretoras' && (
-            <ConfigCorretoras 
-              addLog={addLog}
-            />
-          )}
-          {activePage === 'users' && <UserManagement />}
-          {activePage === 'audit' && <AuditLog />}
-          {activePage === 'trash' && <Trash cloudReports={cloudReports} refreshHistory={refreshHistory} />}
+          <Suspense fallback={<div className="status loading">Carregando…</div>}>
+            {activePage === 'dashboard' && (
+              <Dashboard
+                savedReports={savedReports}
+                onNavigate={setActivePage}
+                refreshHistory={refreshHistory}
+                isAdmin={session.isAdmin}
+                onTrashReport={handleTrashReport}
+              />
+            )}
+            {activePage === 'new-report' && (
+              <NewReport
+                refreshHistory={refreshHistory}
+                addLog={addLog}
+                onReportCreated={handleReportCreated}
+                knownReports={savedReports}
+              />
+            )}
+            {activePage === 'saved-reports' && (
+              <SavedReports
+                savedReports={savedReports}
+                refreshHistory={refreshHistory}
+                onNavigate={setActivePage}
+                isAdmin={session.isAdmin}
+                onTrashReport={handleTrashReport}
+                onReportCreated={handleReportCreated}
+              />
+            )}
+            {activePage === 'pdf-summary' && (
+              <PdfSummary
+                addLog={addLog}
+              />
+            )}
+            {activePage === 'general-report' && (
+              <GeneralReport
+                refreshHistory={refreshHistory}
+                addLog={addLog}
+              />
+            )}
+            {activePage === 'analytics' && (
+              <Analytics
+                savedReports={savedReports}
+              />
+            )}
+            {activePage === 'config-corretoras' && (
+              <ConfigCorretoras
+                addLog={addLog}
+              />
+            )}
+            {activePage === 'users' && <UserManagement />}
+            {activePage === 'audit' && <AuditLog />}
+            {activePage === 'trash' && <Trash cloudReports={cloudReports} refreshHistory={refreshHistory} />}
+          </Suspense>
         </div>
       </main>
 
