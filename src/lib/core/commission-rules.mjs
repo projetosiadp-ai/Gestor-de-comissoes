@@ -1,12 +1,20 @@
 // Regras de comissão por parcela: qual percentual ("Regra" na planilha de origem)
-// é esperado para cada número de parcela. Serve para AVISAR quando a planilha vem
-// com um percentual diferente do combinado — nunca para alterar valores, que
-// continuam sendo os da planilha de origem.
+// é esperado para cada número de parcela. Quando a planilha vem com um percentual
+// diferente do combinado, o relatório final é corrigido para bater com a regra
+// cadastrada (Comissão recalculada a partir de Recebido × percentual esperado).
 //
 // Formato:
 //   { default: { '1': 100 }, brokers: { 'TJK': { '1': 100, '2': 40 } } }
 // A regra da corretora tem prioridade sobre o padrão global; parcela sem regra
 // definida em nenhum dos dois não é verificada.
+//
+// Uma parcela também pode ter percentuais diferentes por forma de pagamento
+// (algumas corretoras cobram a primeira parcela à vista no cartão, então ela chega
+// à 100% de propósito, mas no boleto o padrão combinado é outro percentual):
+//   { '1': { cartao: 100, boleto: 40 } }
+// A forma de pagamento é inferida da coluna "Empresa" da planilha: contém "ELOS"
+// = cartão, contém "PF" = boleto. Se a planilha não indicar nenhum dos dois, a
+// parcela fica sem verificação (mesmo comportamento de "sem regra cadastrada").
 
 export const MAX_PARCELA = 600;
 export const MAX_BROKERS_WITH_RULES = 500;
@@ -47,15 +55,36 @@ function round2(value) {
   return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
-export function expectedPercentFor(rules, corretora, parcela) {
+// Infere a forma de pagamento a partir da coluna "Empresa" (ex: "2006055595-ELOS
+// REC 01" = cartão, "2006055001-PF 01" = boleto). Retorna null se não reconhecer.
+export function resolvePaymentMethod(empresaText) {
+  const tokens = String(empresaText || '').toUpperCase().split(/[^A-Z0-9]+/).filter(Boolean);
+  if (tokens.includes('ELOS')) return 'cartao';
+  if (tokens.includes('PF')) return 'boleto';
+  return null;
+}
+
+function resolveRuleValue(raw, empresaText) {
+  if (raw === undefined || raw === null) return null;
+  if (typeof raw === 'number') return raw;
+  if (typeof raw === 'object' && !Array.isArray(raw)) {
+    const method = resolvePaymentMethod(empresaText);
+    if (!method) return null;
+    const value = raw[method];
+    return typeof value === 'number' ? value : null;
+  }
+  return null;
+}
+
+export function expectedPercentFor(rules, corretora, parcela, empresaText) {
   const key = String(parcela);
   const brokerRules = rules?.brokers?.[corretora];
   if (brokerRules && brokerRules[key] !== undefined && brokerRules[key] !== null) {
-    return Number(brokerRules[key]);
+    return resolveRuleValue(brokerRules[key], empresaText);
   }
   const globalRules = rules?.default;
   if (globalRules && globalRules[key] !== undefined && globalRules[key] !== null) {
-    return Number(globalRules[key]);
+    return resolveRuleValue(globalRules[key], empresaText);
   }
   return null;
 }
@@ -78,7 +107,8 @@ function findHeaderColumns(row) {
     usuario: optional('USU'),
     contrato: optional('CONTRATO'),
     recebido: optional('RECEBIDO'),
-    comissao: optional('COMISS')
+    comissao: optional('COMISS'),
+    empresa: optional('EMPRESA')
   };
 }
 
@@ -106,7 +136,8 @@ export function findCommissionRuleDivergences(rawBlocks, corretora, rules) {
       if (actual === null) continue;
 
       const parcela = Number(parcelaText);
-      const expected = expectedPercentFor(rules, corretora, parcela);
+      const empresaText = columns.empresa === null ? '' : row[columns.empresa];
+      const expected = expectedPercentFor(rules, corretora, parcela, empresaText);
       if (expected === null || expected === actual) continue;
 
       divergences.push({
@@ -180,7 +211,8 @@ export function applyCommissionRuleCorrections(rawBlocks, corretora, rules) {
       if (actual === null) return;
 
       const parcela = Number(parcelaText);
-      const expected = expectedPercentFor(rules, corretora, parcela);
+      const empresaText = columns.empresa === null ? '' : row[columns.empresa];
+      const expected = expectedPercentFor(rules, corretora, parcela, empresaText);
       if (expected === null || expected === actual) return;
 
       const recebido = toNumber(row[columns.recebido]);
@@ -282,18 +314,31 @@ export function isValidCommissionRules(rules) {
   if (!rules || typeof rules !== 'object' || Array.isArray(rules)) return false;
   if (Object.keys(rules).some(key => key !== 'default' && key !== 'brokers')) return false;
 
+  const isValidPercent = value =>
+    typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 100;
+
+  // Uma regra por parcela é um percentual único, ou um percentual por forma de
+  // pagamento ({ cartao, boleto }) para corretoras que cobram diferente conforme
+  // a venda veio no cartão ou no boleto (ver resolvePaymentMethod).
+  const isValidRuleValue = value => {
+    if (isValidPercent(value)) return true;
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      const keys = Object.keys(value);
+      return keys.length === 2 && keys.includes('cartao') && keys.includes('boleto') &&
+        isValidPercent(value.cartao) && isValidPercent(value.boleto);
+    }
+    return false;
+  };
+
   const isValidRuleMap = map => {
     if (!map || typeof map !== 'object' || Array.isArray(map)) return false;
     const entries = Object.entries(map);
     if (entries.length > MAX_RULES_PER_BROKER) return false;
-    return entries.every(([parcela, percent]) =>
+    return entries.every(([parcela, value]) =>
       /^\d+$/.test(parcela) &&
       Number(parcela) >= 1 &&
       Number(parcela) <= MAX_PARCELA &&
-      typeof percent === 'number' &&
-      Number.isFinite(percent) &&
-      percent >= 0 &&
-      percent <= 100
+      isValidRuleValue(value)
     );
   };
 

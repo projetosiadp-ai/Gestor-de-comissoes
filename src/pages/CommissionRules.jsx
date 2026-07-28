@@ -21,6 +21,9 @@ export default function CommissionRules({ addLog }) {
 
   const [newParcela, setNewParcela] = useState('');
   const [newPercent, setNewPercent] = useState('');
+  const [diffPayment, setDiffPayment] = useState(false);
+  const [newPercentCartao, setNewPercentCartao] = useState('');
+  const [newPercentBoleto, setNewPercentBoleto] = useState('');
 
   const log = (type, msg) => { if (addLog) addLog(type, msg); };
 
@@ -67,23 +70,43 @@ export default function CommissionRules({ addLog }) {
     return persist({ ...rules, brokers: nextBrokers });
   };
 
+  const parsePercentInput = (text) => {
+    const clean = String(text).trim().replace('%', '').replace(',', '.');
+    const value = Number(clean);
+    return Number.isFinite(value) && value >= 0 && value <= 100 ? value : null;
+  };
+
   const handleAddRule = () => {
     const parcela = String(newParcela).trim();
-    const percentText = String(newPercent).trim().replace('%', '').replace(',', '.');
-
     if (!/^\d+$/.test(parcela) || Number(parcela) < 1 || Number(parcela) > MAX_PARCELA) {
       alert(`Informe um número de parcela entre 1 e ${MAX_PARCELA}.`);
       return;
     }
-    const percent = Number(percentText);
-    if (!Number.isFinite(percent) || percent < 0 || percent > 100) {
-      alert('Informe um percentual entre 0 e 100.');
-      return;
+
+    let value;
+    if (diffPayment) {
+      const cartao = parsePercentInput(newPercentCartao);
+      const boleto = parsePercentInput(newPercentBoleto);
+      if (cartao === null || boleto === null) {
+        alert('Informe um percentual entre 0 e 100 para cartão e para boleto.');
+        return;
+      }
+      value = { cartao, boleto };
+    } else {
+      const percent = parsePercentInput(newPercent);
+      if (percent === null) {
+        alert('Informe um percentual entre 0 e 100.');
+        return;
+      }
+      value = percent;
     }
 
     setNewParcela('');
     setNewPercent('');
-    updateCurrentRules({ ...currentRules, [parcela]: percent });
+    setNewPercentCartao('');
+    setNewPercentBoleto('');
+    setDiffPayment(false);
+    updateCurrentRules({ ...currentRules, [parcela]: value });
   };
 
   const handleDeleteRule = (parcela) => {
@@ -118,7 +141,7 @@ export default function CommissionRules({ addLog }) {
       <div className="page-title">
         <div>
           <h1>Regras de comissão</h1>
-          <p>Defina o percentual esperado por parcela. O sistema avisa quando a planilha vier diferente — os valores do relatório nunca são alterados.</p>
+          <p>Defina o percentual esperado por parcela. Quando a planilha vier com um percentual diferente do cadastrado, o relatório final corrige a Comissão automaticamente para bater com a regra.</p>
         </div>
       </div>
 
@@ -248,10 +271,20 @@ export default function CommissionRules({ addLog }) {
             }}>
               <Info size={16} style={{ color: 'var(--primary)', flexShrink: 0, marginTop: 2 }} />
               <span className="muted" style={{ fontSize: 12.5, lineHeight: 1.6 }}>
-                Parcela sem regra cadastrada não é verificada. O relatório sempre mantém os valores
-                originais da planilha — a divergência aparece só como aviso ao gerar.
+                Parcela sem regra cadastrada não é verificada e mantém o valor original da planilha.
+                Parcela com regra cadastrada tem a Comissão corrigida automaticamente no relatório
+                quando a planilha vier com um percentual diferente do combinado.
               </span>
             </div>
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={diffPayment}
+                onChange={e => setDiffPayment(e.target.checked)}
+              />
+              Diferenciar cartão de crédito e boleto nesta parcela
+            </label>
 
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
               <input
@@ -264,17 +297,44 @@ export default function CommissionRules({ addLog }) {
                 onKeyDown={e => { if (e.key === 'Enter') handleAddRule(); }}
                 style={{ ...inputStyle, width: 150 }}
               />
-              <input
-                type="number"
-                min="0"
-                max="100"
-                step="0.01"
-                placeholder="Percentual (ex: 100)"
-                value={newPercent}
-                onChange={e => setNewPercent(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') handleAddRule(); }}
-                style={{ ...inputStyle, width: 180 }}
-              />
+              {diffPayment ? (
+                <>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.01"
+                    placeholder="Cartão % (ex: 100)"
+                    value={newPercentCartao}
+                    onChange={e => setNewPercentCartao(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') handleAddRule(); }}
+                    style={{ ...inputStyle, width: 160 }}
+                  />
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.01"
+                    placeholder="Boleto % (ex: 40)"
+                    value={newPercentBoleto}
+                    onChange={e => setNewPercentBoleto(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') handleAddRule(); }}
+                    style={{ ...inputStyle, width: 160 }}
+                  />
+                </>
+              ) : (
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.01"
+                  placeholder="Percentual (ex: 100)"
+                  value={newPercent}
+                  onChange={e => setNewPercent(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') handleAddRule(); }}
+                  style={{ ...inputStyle, width: 180 }}
+                />
+              )}
               <button
                 className="primary"
                 onClick={handleAddRule}
@@ -318,12 +378,23 @@ export default function CommissionRules({ addLog }) {
                       }}
                     >
                       <span style={{ fontWeight: 600 }}>Parcela {parcela}</span>
-                      <span style={{
-                        display: 'inline-flex', alignItems: 'center', gap: 2,
-                        fontWeight: 800, color: 'var(--primary)'
-                      }}>
-                        {percent}<Percent size={12} />
-                      </span>
+                      {percent && typeof percent === 'object' ? (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2, fontWeight: 800, color: 'var(--primary)' }}>
+                            Cartão {percent.cartao}<Percent size={11} />
+                          </span>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2, fontWeight: 800, color: 'var(--primary)' }}>
+                            Boleto {percent.boleto}<Percent size={11} />
+                          </span>
+                        </span>
+                      ) : (
+                        <span style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 2,
+                          fontWeight: 800, color: 'var(--primary)'
+                        }}>
+                          {percent}<Percent size={12} />
+                        </span>
+                      )}
                       <button
                         className="ghost danger"
                         onClick={() => handleDeleteRule(parcela)}
