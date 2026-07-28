@@ -2,6 +2,10 @@ import ExcelJS from 'exceljs';
 import { decodeHtml, parseVendedorCorretora, parseBrazilCurrency, formatNumberBR } from '../core/text.js';
 import { extractHtmlCommissionRecords, recordsFromRows } from '../core/duplicate-analysis.js';
 
+function round2(value) {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
 function getLastUsedRow(sheet) {
   let last = 1;
   sheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
@@ -102,6 +106,7 @@ function htmlToRows(html, fileName = '', shouldDeduplicate = false) {
   // --- 1. Lê tabela PJ (GRD_ResultadoPJ) para coletar empresas PJ e calcular total PJ
   const pjCompanies = new Set();
   let pjTotal = 0;
+  let pjRecebidoTotal = 0;
   let pjAllRows = [];
   let pjComissaoColIdx = 7;
   let pjRecebidoColIdx = 5;
@@ -129,6 +134,7 @@ function htmlToRows(html, fileName = '', shouldDeduplicate = false) {
       if (recebido !== null || comissao !== null) {
         pjCompanies.add(empresa);
         if (comissao !== null) pjTotal += comissao;
+        if (recebido !== null) pjRecebidoTotal += recebido;
       }
     }
   }
@@ -192,16 +198,20 @@ function htmlToRows(html, fileName = '', shouldDeduplicate = false) {
 
   const pfAllRows = parseTableRows(pfTableMatch[1]);
   let pfTotal = 0;
+  let pfRecebidoTotal = 0;
   const pfDataRows = [];
 
   if (pfAllRows[0]) rows.push(pfAllRows[0]);
 
   let pfComissaoColIdx = 12;
+  let pfRecebidoColIdx = 11;
   let pfEmpresaColIdx = 5;
   let pfCodColIdx = 0;
   if (pfAllRows[0]) {
     const comIdx = pfAllRows[0].findIndex(c => String(c || '').toUpperCase().includes('COMISS'));
     if (comIdx !== -1) pfComissaoColIdx = comIdx;
+    const recIdx = pfAllRows[0].findIndex(c => String(c || '').toUpperCase().includes('RECEB'));
+    if (recIdx !== -1) pfRecebidoColIdx = recIdx;
     const empIdx = pfAllRows[0].findIndex(c => String(c || '').toUpperCase().includes('EMPRESA'));
     if (empIdx !== -1) pfEmpresaColIdx = empIdx;
     const codIdx = pfAllRows[0].findIndex(c => String(c || '').toUpperCase().includes('CÓDIGO') || String(c || '').toUpperCase().includes('CODIGO'));
@@ -212,21 +222,38 @@ function htmlToRows(html, fileName = '', shouldDeduplicate = false) {
     const row = pfAllRows[i];
     if (row.some(c => String(c || '').toUpperCase().includes('TOTAL'))) continue;
     if (!row.some(c => String(c || '').trim())) continue;
-    
+
     const empresa = String(row[pfEmpresaColIdx] || '').trim();
     if (shouldDeduplicate && pjCompanies.size > 0 && empresa && pjCompanies.has(empresa)) continue;
-    
+
     const comissao = parseBrazilCurrency(String(row[pfComissaoColIdx] || ''));
     if (comissao !== null) pfTotal += comissao;
+    const recebido = parseBrazilCurrency(String(row[pfRecebidoColIdx] || ''));
+    if (recebido !== null) pfRecebidoTotal += recebido;
     pfDataRows.push(row);
   }
 
   pfDataRows.forEach(r => rows.push(r));
 
-  // --- 3. Adiciona bloco PJ ao final, mapeando para o formato de colunas PF ---
+  // Linha de total ao final da tabela PF, só nas colunas Recebido e Comissão
+  // (igual ao relatório feito manualmente).
+  if (pfDataRows.length > 0) {
+    const totalsRow = new Array(pfAllRows[0] ? pfAllRows[0].length : 15).fill('');
+    totalsRow[pfCodColIdx] = 'TOTAL GERAL';
+    totalsRow[pfRecebidoColIdx] = formatNumberBR(round2(pfRecebidoTotal));
+    totalsRow[pfComissaoColIdx] = formatNumberBR(round2(pfTotal));
+    rows.push(totalsRow);
+  }
+
+  // --- 3. Adiciona bloco PJ ao final, com o cabeçalho e as colunas próprias da
+  // tabela PJ (Vidas não existe no PF, e PJ não tem Responsável/Usuário/Contrato/
+  // CPF/Plano/Data de Adesão — por isso ganha sua própria tabela, em vez de ser
+  // espremida no layout de colunas do PF).
   if (pjAllRows.length > 0 && pjCompanies.size > 0) {
     rows.push([]); // separador
-    rows.push(['PJ']); // rótulo de seção (não é cabeçalho de tabela)
+    rows.push(['PJ']); // rótulo de seção
+    rows.push(['Código', 'Empresa', 'Parcela', 'Vencimento', 'Pagamento', 'Recebido', 'Regra', 'Comissão', 'Vidas', 'Mensalidade']);
+    let pjRowCount = 0;
     for (let i = 1; i < pjAllRows.length; i++) {
       const row = pjAllRows[i];
       if (row.some(c => String(c || '').toUpperCase().includes('TOTAL'))) continue;
@@ -235,24 +262,12 @@ function htmlToRows(html, fileName = '', shouldDeduplicate = false) {
       const recebido = parseBrazilCurrency(String(row[5] || ''));
       const comissao = parseBrazilCurrency(String(row[7] || ''));
       if (recebido === null && comissao === null) continue;
-      // Mapeia colunas PJ para as posições equivalentes da tabela PF
-      rows.push([
-        row[0],  // [0]  Código
-        row[1],  // [1]  Responsável ← usa Empresa PJ
-        '',      // [2]  Usuário
-        '',      // [3]  Contrato
-        '',      // [4]  CPF
-        row[1],  // [5]  Empresa
-        '',      // [6]  Plano
-        row[2],  // [7]  Parcela
-        row[3],  // [8]  Vencimento
-        row[4],  // [9]  Pagamento
-        row[6],  // [10] Regra
-        row[5],  // [11] Recebido
-        row[7],  // [12] Comissão
-        row[9],  // [13] Mensalidade
-        ''       // [14] Data de Adesão
-      ]);
+      rows.push([row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8], row[9]]);
+      pjRowCount += 1;
+    }
+    // Linha de total ao final da tabela PJ, só nas colunas Recebido e Comissão.
+    if (pjRowCount > 0) {
+      rows.push(['TOTAL GERAL', '', '', '', '', formatNumberBR(round2(pjRecebidoTotal)), '', formatNumberBR(round2(pjTotal)), '', '']);
     }
   }
 

@@ -10,6 +10,76 @@ function normalizeBaseText(value) {
     .trim();
 }
 
+// Sufixos jurídicos/descritivos genéricos que corretoras costumam variar entre
+// planilhas (nome curto vs. razão social completa). Usado para reconhecer que
+// "TJK" e "TJK Corretora de Seguros Ltda" são a mesma corretora.
+const GENERIC_LEGAL_SUFFIXES = ['LTDA', 'LIMITADA', 'EIRELI', 'EPP', 'S S', 'SA', 'ME'];
+const GENERIC_BROKER_PHRASES = [
+  'CORRETORA DE SEGUROS E CONSULTORIA',
+  'CORRETORA DE SEGUROS',
+  'CORRETAGEM DE SEGUROS',
+  'ADMINISTRADORA E CORRETORA',
+  'ADMINISTRADORA DE BENEFICIOS',
+  'CONSULTORIA EM SEGUROS',
+  'CORRETORA'
+];
+
+function stripTrailingToken(text, token) {
+  const withSpace = ` ${token}`;
+  if (text !== token && text.endsWith(withSpace)) {
+    return text.slice(0, text.length - withSpace.length).trim();
+  }
+  return null;
+}
+
+function brokerNameCore(rawName) {
+  let text = normalizeBaseText(rawName);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const suffix of GENERIC_LEGAL_SUFFIXES) {
+      const stripped = stripTrailingToken(text, suffix);
+      if (stripped !== null) { text = stripped; changed = true; break; }
+    }
+    if (changed) continue;
+    for (const phrase of GENERIC_BROKER_PHRASES) {
+      const stripped = stripTrailingToken(text, phrase);
+      if (stripped !== null) { text = stripped; changed = true; break; }
+    }
+  }
+  return text;
+}
+
+function isWordBoundaryPrefix(shorter, longer) {
+  if (!longer.startsWith(shorter)) return false;
+  return longer.length === shorter.length || longer[shorter.length] === ' ';
+}
+
+// Quantas palavras "sobram" no nome mais longo depois do prefixo compartilhado.
+// Poucas palavras extras (ex: "Gestão de Benefícios") soa como um mesmo nome
+// escrito com mais detalhe. Muitas palavras extras (ex: "Corp Soluções em Seguros
+// e Rep. Com. Brasil") soa como um nome de empresa genuinamente diferente que só
+// por acaso começa com a mesma palavra.
+const MAX_EXTRA_WORDS_TO_FLAG = 3;
+
+// Heurística para AVISAR (não unir automaticamente) quando duas corretoras que o
+// sistema tratou como diferentes podem, na verdade, ser a mesma grafada de forma
+// bem mais completa/detalhada (ex: "Theo Corretora" e "Theo Gestão de Benefícios
+// Corretora de Seguros Ltda"). Não decide sozinho: só sinaliza para conferência
+// humana, porque unir errado misturaria dinheiro de corretoras diferentes.
+function areLikelySameBroker(nameA, nameB) {
+  const coreA = brokerNameCore(nameA);
+  const coreB = brokerNameCore(nameB);
+  if (!coreA || !coreB || coreA === coreB) return false;
+
+  const [shorter, longer] = coreA.length <= coreB.length ? [coreA, coreB] : [coreB, coreA];
+  if (!isWordBoundaryPrefix(shorter, longer)) return false;
+
+  const extra = longer.slice(shorter.length).trim();
+  const extraWordCount = extra ? extra.split(' ').length : 0;
+  return extraWordCount <= MAX_EXTRA_WORDS_TO_FLAG;
+}
+
 function safeFileName(name) {
   return String(name || 'SEM_NOME')
     .replace(/[\\/:*?"<>|]/g, '-')
@@ -141,6 +211,8 @@ function formatBRL(value) {
 
 export {
   normalizeBaseText,
+  brokerNameCore,
+  areLikelySameBroker,
   safeFileName,
   decodeHtml,
   getText,

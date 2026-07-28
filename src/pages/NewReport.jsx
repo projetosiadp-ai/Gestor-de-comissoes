@@ -2,11 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { 
   Upload, FileSpreadsheet, FileCode, File, X, Trash2, 
   Settings, FolderOpen, Play, CheckCircle, AlertCircle, RefreshCw,
-  Users, DollarSign, Search, ShieldAlert, FileDown, Download
+  Users, DollarSign, Search, ShieldAlert, FileDown, Download, Wand2
 } from 'lucide-react';
 import { saveAs } from 'file-saver';
 import { formatBRL } from '../App';
-import { generateIndividualReports } from '../services/reportGenerator';
+import { generateIndividualReports, applyCommissionCorrections } from '../services/reportGenerator';
 import { analyzeFile } from '../lib/reports/input-reader';
 import { saveReport } from '../services/historyService';
 import { useAuth } from '../auth/AuthContext';
@@ -54,6 +54,9 @@ export default function NewReport({ refreshHistory, addLog, onReportCreated, kno
   const [result, setResult] = useState(null);
   const [analysis, setAnalysis] = useState([]);
   const [correctedFiles, setCorrectedFiles] = useState(new Set());
+  const [applyingCorrections, setApplyingCorrections] = useState(false);
+  const [correctionReport, setCorrectionReport] = useState(null);
+  const [lastSavedReport, setLastSavedReport] = useState(null);
   const activeJobRef = React.useRef(null);
 
   useEffect(() => {
@@ -291,11 +294,14 @@ export default function NewReport({ refreshHistory, addLog, onReportCreated, kno
         inputFiles: filesArray.length,
         totalFiles: res.summary.length,
         errors: res.errors,
+        convertNumbers,
         createdByUid: session.actor?.uid || 'local',
         createdByName: session.actor?.displayName || session.actor?.email || 'Usuário'
       };
 
       await saveReport(savedReport, session.actor);
+      setLastSavedReport(savedReport);
+      setCorrectionReport(null);
 
       setResult({ ...res, totalFiles: res.summary.length });
       const errorCount = res.errors?.length ? `\nArquivos com erro: ${res.errors.length}` : '';
@@ -326,6 +332,56 @@ export default function NewReport({ refreshHistory, addLog, onReportCreated, kno
 
   const handleCancel = async () => {
     window.location.reload();
+  };
+
+  const handleApplyCorrections = async () => {
+    if (!result || applyingCorrections) return;
+
+    const totalLinhas = (result.commissionDivergences || []).reduce((acc, d) => acc + d.ocorrencias, 0);
+    const confirmed = window.confirm(
+      `Corrigir automaticamente ${totalLinhas} linha(s)?\n\n`
+      + 'A comissão será recalculada como Recebido × percentual cadastrado, e o total de cada '
+      + 'corretora afetada será refeito. As células alteradas ficam destacadas em amarelo na planilha.\n\n'
+      + 'Atenção: os valores passam a NÃO bater com a planilha do sistema de origem.'
+    );
+    if (!confirmed) return;
+
+    setApplyingCorrections(true);
+    try {
+      const corrected = await applyCommissionCorrections(result, convertNumbers);
+      setResult({ ...corrected, totalFiles: corrected.summary.length });
+      setCorrectionReport(corrected.correctedBrokers || []);
+
+      // Regrava o relatório no histórico já com os valores corrigidos, para o
+      // download posterior em "Relatórios salvos" refletir a correção.
+      if (lastSavedReport) {
+        const totalValue = corrected.summary.reduce(
+          (acc, item) => acc + Number(item.totalConsolidado ?? item.total ?? 0), 0
+        );
+        const updated = {
+          ...lastSavedReport,
+          summary: corrected.summary,
+          totalValue,
+          totalGeral: totalValue,
+          commissionCorrectionsApplied: corrected.appliedCorrections
+        };
+        await saveReport(updated, session.actor);
+        setLastSavedReport(updated);
+        refreshHistory();
+        onReportCreated?.(updated);
+      }
+
+      setStatus({
+        type: 'success',
+        message: `${corrected.appliedCorrections} linha(s) corrigida(s) em ${(corrected.correctedBrokers || []).length} corretora(s).`
+      });
+      log('success', `Correção automática aplicada em ${corrected.appliedCorrections} linha(s).`);
+    } catch (err) {
+      setStatus({ type: 'error', message: 'Erro ao aplicar correções: ' + err.message });
+      log('error', `Falha na correção automática: ${err.message}`);
+    } finally {
+      setApplyingCorrections(false);
+    }
   };
 
   const handleSaveToFolder = async () => {
@@ -611,6 +667,176 @@ export default function NewReport({ refreshHistory, addLog, onReportCreated, kno
             <AlertCircle size={16} />
           )}
           <span>{status.message}</span>
+        </div>
+      )}
+
+      {result?.possibleDuplicateBrokers?.length > 0 && (
+        <div style={{
+          background: '#fffbeb',
+          border: '1px solid #fde68a',
+          borderRadius: '12px',
+          padding: '16px 20px',
+          marginBottom: '20px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '8px'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <span style={{ fontSize: '18px' }}>⚠️</span>
+            <strong style={{ color: '#92400e', fontSize: '14px' }}>Possíveis corretoras duplicadas</strong>
+          </div>
+          <div style={{ color: '#78350f', fontSize: '13px', lineHeight: '1.6' }}>
+            Os nomes abaixo parecem ser a mesma corretora escrita de forma diferente. O sistema NÃO uniu
+            essas automaticamente por segurança — confira antes de enviar e, se forem a mesma, cadastre
+            o apelido em "Configurar Corretoras":
+            <ul style={{ margin: '8px 0 0 20px', padding: 0 }}>
+              {result.possibleDuplicateBrokers.map(([a, b], idx) => (
+                <li key={idx}>"{a}" e "{b}"</li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
+
+      {result?.commissionDivergences?.length > 0 && (
+        <div style={{
+          background: '#fff7ed',
+          border: '1px solid #fdba74',
+          borderRadius: '12px',
+          padding: '16px 20px',
+          marginBottom: '20px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '8px'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <span style={{ fontSize: '18px' }}>📋</span>
+            <strong style={{ color: '#9a3412', fontSize: '14px' }}>
+              Comissões fora da regra cadastrada ({result.commissionDivergences.length})
+            </strong>
+          </div>
+          <div style={{ color: '#7c2d12', fontSize: '13px', lineHeight: '1.6' }}>
+            O percentual da coluna "Regra" veio diferente do cadastrado em "Regras de comissão".
+            Os valores do relatório <strong>não foram alterados</strong>.
+
+            {/* Layout em divs (e não <table>) de propósito: o tema escuro força
+                color/background em th/td com !important, o que tornaria o texto
+                ilegível dentro desta caixa de fundo claro fixo. */}
+            <div style={{ maxHeight: 240, overflowY: 'auto', marginTop: 10 }}>
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'minmax(140px, 2fr) 70px 90px 70px 70px minmax(140px, 2fr)',
+                gap: '2px 10px',
+                fontSize: '12.5px',
+                alignItems: 'center'
+              }}>
+                {['Corretora', 'Parcela', 'Esperado', 'Veio', 'Linhas', 'Exemplo'].map(h => (
+                  <div key={h} style={{
+                    color: '#9a3412',
+                    fontWeight: 700,
+                    borderBottom: '1.5px solid #fdba74',
+                    paddingBottom: 4,
+                    position: 'sticky',
+                    top: 0,
+                    background: '#fff7ed'
+                  }}>{h}</div>
+                ))}
+                {result.commissionDivergences.map((d, idx) => (
+                  <React.Fragment key={idx}>
+                    <div style={{ color: '#7c2d12', padding: '5px 0' }}>{d.corretora}</div>
+                    <div style={{ color: '#7c2d12', padding: '5px 0' }}>{d.parcela}</div>
+                    <div style={{ color: '#166534', fontWeight: 700, padding: '5px 0' }}>{d.esperado}%</div>
+                    <div style={{ color: '#b91c1c', fontWeight: 700, padding: '5px 0' }}>{d.encontrado}%</div>
+                    <div style={{ color: '#7c2d12', padding: '5px 0' }}>{d.ocorrencias}</div>
+                    <div style={{ color: '#7c2d12', padding: '5px 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={d.exemplo}>{d.exemplo}</div>
+                  </React.Fragment>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid #fed7aa', fontSize: '12.5px' }}>
+              <strong>O que fazer:</strong> se o percentual correto é mesmo o esperado, use o botão
+              abaixo para o sistema refazer a conta. Se aquela corretora tem um acordo diferente,
+              cadastre o percentual dela em <strong>"Regras de comissão"</strong> (menu à esquerda)
+              que este aviso deixa de aparecer.
+            </div>
+
+            <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <button
+                onClick={handleApplyCorrections}
+                disabled={applyingCorrections}
+                style={{
+                  background: applyingCorrections ? '#fdba74' : 'linear-gradient(90deg, #ea580c, #f97316)',
+                  border: 'none',
+                  padding: '9px 18px',
+                  fontSize: '13px',
+                  cursor: applyingCorrections ? 'default' : 'pointer',
+                  borderRadius: '6px',
+                  fontWeight: 'bold',
+                  color: '#fff',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 8
+                }}
+              >
+                {applyingCorrections
+                  ? <><RefreshCw size={14} className="animate-spin" /> Corrigindo...</>
+                  : <><Wand2 size={14} /> Corrigir automaticamente</>}
+              </button>
+              <span style={{ color: '#9a3412', fontSize: '12px' }}>
+                Recalcula Comissão = Recebido × percentual cadastrado e refaz os totais.
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {correctionReport?.length > 0 && (
+        <div style={{
+          background: '#ecfdf5',
+          border: '1px solid #a7f3d0',
+          borderRadius: '12px',
+          padding: '16px 20px',
+          marginBottom: '20px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '8px'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <span style={{ fontSize: '18px' }}>✅</span>
+            <strong style={{ color: '#065f46', fontSize: '14px' }}>Comissões corrigidas</strong>
+          </div>
+          <div style={{ color: '#065f46', fontSize: '13px', lineHeight: '1.6' }}>
+            As planilhas abaixo foram refeitas com o percentual cadastrado. As células alteradas estão
+            destacadas em amarelo, com o valor original anotado no comentário da célula.
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'minmax(160px, 2fr) 90px 120px 120px 120px',
+              gap: '2px 10px',
+              fontSize: '12.5px',
+              marginTop: 10,
+              alignItems: 'center'
+            }}>
+              {['Corretora', 'Linhas', 'Total antes', 'Total depois', 'Diferença'].map(h => (
+                <div key={h} style={{ color: '#047857', fontWeight: 700, borderBottom: '1.5px solid #6ee7b7', paddingBottom: 4 }}>{h}</div>
+              ))}
+              {correctionReport.map((c, idx) => (
+                <React.Fragment key={idx}>
+                  <div style={{ color: '#065f46', padding: '5px 0' }}>{c.corretora}</div>
+                  <div style={{ color: '#065f46', padding: '5px 0' }}>{c.correcoes}</div>
+                  <div style={{ color: '#065f46', padding: '5px 0' }}>{formatBRL(c.totalAnterior)}</div>
+                  <div style={{ color: '#065f46', padding: '5px 0', fontWeight: 700 }}>{formatBRL(c.totalNovo)}</div>
+                  <div style={{ color: c.diferenca >= 0 ? '#047857' : '#b91c1c', padding: '5px 0', fontWeight: 700 }}>
+                    {c.diferenca >= 0 ? '+' : ''}{formatBRL(c.diferenca)}
+                  </div>
+                </React.Fragment>
+              ))}
+            </div>
+            <div style={{ marginTop: 10, paddingTop: 8, borderTop: '1px solid #a7f3d0', fontSize: '12.5px' }}>
+              O histórico em "Relatórios salvos" já foi atualizado com os valores corrigidos.
+              Baixe as planilhas novamente pelos botões abaixo.
+            </div>
+          </div>
         </div>
       )}
 

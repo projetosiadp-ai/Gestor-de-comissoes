@@ -26,7 +26,12 @@ const ADMIN_UID = 'admin-user';
 const VALID_SAVED_REPORT = {
   id: 'saved-1', month: '2026-07', label: 'Julho/2026', createdAt: '2026-07-16T10:00:00.000Z',
   createdByUid: OPERATOR_UID, createdByName: 'Operador', brokers: 1, sellers: 3, totalValue: 100,
-  inputFiles: 1, errors: 0, encryptedSellerData: 'aWZ2.Y2lwaGVy', deletedAt: null, deletedByUid: null
+  inputFiles: 1, errors: 0, encryptedSellerData: 'aWZ2.Y2lwaGVy', convertNumbers: true,
+  deletedAt: null, deletedByUid: null
+};
+
+const VALID_BROKER_DETAIL = {
+  corretora: 'D TREMANTI', encryptedRows: 'aWZ2.Y2lwaGVy', createdByUid: OPERATOR_UID
 };
 
 test.before(async () => {
@@ -144,6 +149,64 @@ test('an operator cannot delete a saved_report', async () => {
   await seedDoc('saved_reports', 'saved-1', { ...VALID_SAVED_REPORT, date: new Date() });
   const context = testEnvironment.authenticatedContext(OPERATOR_UID, { email: 'operador@empresa.com' });
   await rulesTesting.assertFails(context.firestore().collection('saved_reports').doc('saved-1').delete());
+});
+
+test('approved operator can read and create a well-formed broker_details doc, but not outside the safe schema', async () => {
+  await seedDoc('saved_reports', 'saved-1', { ...VALID_SAVED_REPORT, date: new Date() });
+  const context = testEnvironment.authenticatedContext(OPERATOR_UID, { email: 'operador@empresa.com' });
+
+  await rulesTesting.assertSucceeds(
+    context.firestore().collection('saved_reports').doc('saved-1').collection('broker_details').get()
+  );
+  await rulesTesting.assertSucceeds(
+    context.firestore().collection('saved_reports').doc('saved-1').collection('broker_details').doc('d-tremanti')
+      .set(VALID_BROKER_DETAIL)
+  );
+  await rulesTesting.assertFails(
+    context.firestore().collection('saved_reports').doc('saved-1').collection('broker_details').doc('bad-1')
+      .set({ corretora: 'X', encryptedRows: 'abc', createdByUid: OPERATOR_UID, cpf: '123.456.789-00' })
+  );
+});
+
+test('broker_details rejects an encryptedRows blob over the size cap', async () => {
+  await seedDoc('saved_reports', 'saved-1', { ...VALID_SAVED_REPORT, date: new Date() });
+  const context = testEnvironment.authenticatedContext(OPERATOR_UID, { email: 'operador@empresa.com' });
+  await rulesTesting.assertFails(
+    context.firestore().collection('saved_reports').doc('saved-1').collection('broker_details').doc('too-big')
+      .set({ ...VALID_BROKER_DETAIL, encryptedRows: 'a'.repeat(900001) })
+  );
+});
+
+test('an operator cannot overwrite a broker_details doc created by someone else, but an admin can', async () => {
+  await seedDoc('saved_reports', 'saved-1', { ...VALID_SAVED_REPORT, date: new Date() });
+  await seedDoc('saved_reports/saved-1/broker_details', 'd-tremanti', VALID_BROKER_DETAIL);
+
+  const otherContext = testEnvironment.authenticatedContext(OTHER_OPERATOR_UID, { email: 'outro@empresa.com' });
+  await rulesTesting.assertFails(
+    otherContext.firestore().collection('saved_reports').doc('saved-1').collection('broker_details').doc('d-tremanti')
+      .set({ ...VALID_BROKER_DETAIL, createdByUid: OTHER_OPERATOR_UID })
+  );
+
+  const adminContext = testEnvironment.authenticatedContext(ADMIN_UID, { email: 'admin@empresa.com' });
+  await rulesTesting.assertSucceeds(
+    adminContext.firestore().collection('saved_reports').doc('saved-1').collection('broker_details').doc('d-tremanti')
+      .set({ ...VALID_BROKER_DETAIL, createdByUid: ADMIN_UID })
+  );
+});
+
+test('only an admin can delete a broker_details doc', async () => {
+  await seedDoc('saved_reports', 'saved-1', { ...VALID_SAVED_REPORT, date: new Date() });
+  await seedDoc('saved_reports/saved-1/broker_details', 'd-tremanti', VALID_BROKER_DETAIL);
+
+  const operatorContext = testEnvironment.authenticatedContext(OPERATOR_UID, { email: 'operador@empresa.com' });
+  await rulesTesting.assertFails(
+    operatorContext.firestore().collection('saved_reports').doc('saved-1').collection('broker_details').doc('d-tremanti').delete()
+  );
+
+  const adminContext = testEnvironment.authenticatedContext(ADMIN_UID, { email: 'admin@empresa.com' });
+  await rulesTesting.assertSucceeds(
+    adminContext.firestore().collection('saved_reports').doc('saved-1').collection('broker_details').doc('d-tremanti').delete()
+  );
 });
 
 test('only an admin can write system_config, and only in the expected shape', async () => {

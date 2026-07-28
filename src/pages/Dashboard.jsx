@@ -231,7 +231,7 @@ export default function Dashboard({ savedReports, onNavigate, refreshHistory, is
           <div className="metric">
             <div className="metric-icon blue"><TrendingUp size={24} /></div>
             <div>
-              <small>Comissões ({kpis.monthLabel})</small>
+              <small title={`Comissões (${kpis.monthLabel})`}>Comissões ({kpis.monthLabel})</small>
               <strong>{formatBRL(kpis.comissoes)}</strong>
               {kpis.diffComissoes !== null && (
                 <span style={{ fontSize: '11px', fontWeight: '700', color: kpis.diffComissoes >= 0 ? 'var(--green)' : 'var(--red)', display: 'inline-flex', alignItems: 'center', gap: '3px', marginTop: '2px' }}>

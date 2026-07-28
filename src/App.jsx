@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, lazy, Suspense } from 'react';
 import {
   LayoutDashboard, PlusCircle, History, FileDown, Table, Settings,
-  UserCog, ArchiveRestore, ScrollText, LineChart
+  UserCog, ArchiveRestore, ScrollText, LineChart, Percent
 } from 'lucide-react';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db, firebaseConfigured } from './services/firebaseClient';
@@ -21,6 +21,7 @@ const SavedReports = lazy(() => import('./pages/SavedReports'));
 const PdfSummary = lazy(() => import('./pages/PdfSummary'));
 const GeneralReport = lazy(() => import('./pages/GeneralReport'));
 const ConfigCorretoras = lazy(() => import('./pages/ConfigCorretoras'));
+const CommissionRules = lazy(() => import('./pages/CommissionRules'));
 const UserManagement = lazy(() => import('./pages/UserManagement'));
 const Trash = lazy(() => import('./pages/Trash'));
 const AuditLog = lazy(() => import('./pages/AuditLog'));
@@ -153,6 +154,7 @@ export default function App() {
     'pdf-summary': 'Resumo único das comissões em PDF',
     'general-report': 'Consolidação de planilhas individuais em relatório geral',
     'config-corretoras': 'Mapeamentos e apelidos das corretoras',
+    'commission-rules': 'Percentual esperado por parcela em cada corretora',
     'users': 'Contas, perfis e aprovações',
     'trash': 'Registros excluídos nos últimos 30 dias',
     'audit': 'Eventos operacionais e administrativos',
@@ -167,6 +169,7 @@ export default function App() {
     { id: 'general-report', label: 'Relatório Geral', icon: Table, tooltip: 'Relatório Geral' },
     { id: 'analytics', label: 'Analítica', icon: LineChart, tooltip: 'Analítica detalhada' },
     { id: 'config-corretoras', label: 'Configurar corretoras', icon: Settings, tooltip: 'Configurar corretoras', adminOnly: true },
+    { id: 'commission-rules', label: 'Regras de comissão', icon: Percent, tooltip: 'Percentual esperado por parcela', adminOnly: true },
     { id: 'users', label: 'Usuários', icon: UserCog, tooltip: 'Usuários e acessos', adminOnly: true },
     { id: 'audit', label: 'Auditoria', icon: ScrollText, tooltip: 'Auditoria compartilhada', adminOnly: true },
     { id: 'trash', label: 'Lixeira', icon: ArchiveRestore, tooltip: 'Lixeira de 30 dias', adminOnly: true }
@@ -266,6 +269,11 @@ export default function App() {
             )}
             {activePage === 'config-corretoras' && (
               <ConfigCorretoras
+                addLog={addLog}
+              />
+            )}
+            {activePage === 'commission-rules' && (
+              <CommissionRules
                 addLog={addLog}
               />
             )}

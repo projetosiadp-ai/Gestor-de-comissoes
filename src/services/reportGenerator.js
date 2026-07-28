@@ -4,6 +4,8 @@ import blobStream from 'blob-stream';
 import { saveAs } from 'file-saver';
 import {
   normalizeBaseText,
+  brokerNameCore,
+  areLikelySameBroker,
   safeFileName,
   decodeHtml,
   getText,
@@ -14,12 +16,14 @@ import {
 import { readInput, getRowsFromXlsxSheet } from '../lib/reports/input-reader.js';
 import { copyBlock, consolidateCommissionTotalsInWorksheet } from '../lib/reports/workbook-format.js';
 import { getCorretorasConfig } from './configService.js';
+import { getCommissionRules } from './commissionRulesService.js';
+import {
+  findCommissionRuleDivergences,
+  summarizeDivergences,
+  applyCommissionRuleCorrections
+} from '../lib/core/commission-rules.mjs';
 
-async function normalizarCorretoraParaGrupo(nome) {
-  const original = String(nome || '').trim();
-  const base = normalizeBaseText(original);
-  if (!base || base.includes('NAO IDENTIFICADA')) return 'Corretora não identificada';
-
+async function resolveCorretoraViaConfig(base) {
   const config = await getCorretorasConfig();
 
   for (const [nomePrincipal, aliases] of Object.entries(config)) {
@@ -39,7 +43,51 @@ async function normalizarCorretoraParaGrupo(nome) {
     }
   }
 
-  return original;
+  return null;
+}
+
+// Cria um resolvedor de nome de corretora escopado a um único lote de arquivos
+// (uma chamada de generateGeneralReport/generateIndividualReports/parseGeneralInputs).
+// Além da configuração cadastrada manualmente (system_config/corretoras_config),
+// reconhece automaticamente quando duas grafias diferentes vistas no MESMO lote são
+// a mesma corretora (ex: "TJK" e "TJK Corretora de Seguros Ltda"), comparando o nome
+// sem sufixos jurídicos/descritivos genéricos (brokerNameCore). A primeira grafia
+// vista para uma corretora "vence" e vira o nome canônico usado no relatório.
+function createCorretoraResolver() {
+  const canonicalByCore = new Map();
+
+  return async function resolverCorretora(nome) {
+    const original = String(nome || '').trim();
+    const base = normalizeBaseText(original);
+    if (!base || base.includes('NAO IDENTIFICADA')) return 'Corretora não identificada';
+
+    const configMatch = await resolveCorretoraViaConfig(base);
+    const resolvedName = configMatch || original;
+
+    const core = brokerNameCore(resolvedName);
+    const existing = canonicalByCore.get(core);
+    if (existing) return existing;
+
+    canonicalByCore.set(core, resolvedName);
+    return resolvedName;
+  };
+}
+
+// Varre os nomes finais de corretora de um relatório e sinaliza pares que parecem
+// ser a mesma corretora grafada de forma diferente, mas que o resolvedor não uniu
+// automaticamente (por segurança). É só um aviso para o usuário conferir, nunca
+// uma fusão automática.
+function findPossibleDuplicateBrokerPairs(names) {
+  const relevant = names.filter(n => n && n !== 'Corretora não identificada');
+  const pairs = [];
+  for (let i = 0; i < relevant.length; i++) {
+    for (let j = i + 1; j < relevant.length; j++) {
+      if (areLikelySameBroker(relevant[i], relevant[j])) {
+        pairs.push([relevant[i], relevant[j]]);
+      }
+    }
+  }
+  return pairs;
 }
 
 function findTotalInRows(rows) {
@@ -102,12 +150,13 @@ export async function generateGeneralReport(files, onProgress) {
   const items = [];
   const errors = [];
   const reportData = [];
+  const resolverCorretora = createCorretoraResolver();
 
   for (const file of files) {
     try {
       const item = await readInput(file, false);
       const corretoraOriginal = item.info.corretora || 'Corretora não identificada';
-      const corretora = await normalizarCorretoraParaGrupo(corretoraOriginal);
+      const corretora = await resolverCorretora(corretoraOriginal);
       
       const total = getItemCommissionTotal(item);
       const semTotal = total === 0 && !item.rows?.some(r => r?.join('').includes('TOTAL'));
@@ -134,7 +183,7 @@ export async function generateGeneralReport(files, onProgress) {
     if (onProgress) onProgress(readCount, files.length, `Lendo arquivos: ${readCount} de ${files.length}`, 'leitura');
   }
 
-  items.sort((a, b) => b.total - a.total);
+  items.sort((a, b) => a.corretora.localeCompare(b.corretora, 'pt-BR'));
 
   if (items.length === 0) throw new Error('Nenhum resumo pôde ser extraído.');
 
@@ -143,7 +192,9 @@ export async function generateGeneralReport(files, onProgress) {
   const pdfBlob = await createSummaryPdf(items, errors);
   saveAs(pdfBlob, `Resumo_Comissoes_${new Date().toISOString().slice(0, 10).replace(/-/g, '')}.pdf`);
 
-  return { items, errors, totalGeral: items.reduce((acc, i) => acc + i.total, 0) };
+  const possibleDuplicateBrokers = findPossibleDuplicateBrokerPairs(items.map(i => i.corretora));
+
+  return { items, errors, totalGeral: items.reduce((acc, i) => acc + i.total, 0), possibleDuplicateBrokers };
 }
 
 async function createSummaryPdf(items, errors) {
@@ -219,7 +270,7 @@ async function createSummaryPdf(items, errors) {
       }
     }
 
-    doc.fontSize(8).fillColor('#64748b').text('Desenvolvido por glzn-comercial', 48, 800, { align: 'center', width: 500 });
+    doc.fontSize(8).fillColor('#64748b').text('Desenvolvido por glzn-comercial', 48, 780, { align: 'center', width: 500 });
     doc.end();
 
     stream.on('finish', () => resolve(stream.toBlob('application/pdf')));
@@ -231,6 +282,7 @@ export async function generateIndividualReports(files, sortAlpha, convertNumbers
   const grouped = new Map();
   const errors = [];
   let readCount = 0;
+  const resolverCorretora = createCorretoraResolver();
 
   for (const file of files) {
     if (filesToSkip && filesToSkip.includes(file.name)) {
@@ -242,7 +294,7 @@ export async function generateIndividualReports(files, sortAlpha, convertNumbers
       const shouldDeduplicate = filesToDeduplicate && filesToDeduplicate.includes(file.name);
       const item = await readInput(file, shouldDeduplicate);
       const corretoraOriginal = item.info.corretora || 'Corretora não identificada';
-      const corretora = await normalizarCorretoraParaGrupo(corretoraOriginal);
+      const corretora = await resolverCorretora(corretoraOriginal);
       item.info.corretoraGrupo = corretora;
       item.info.corretoraOriginal = corretoraOriginal;
       if (!grouped.has(corretora)) grouped.set(corretora, []);
@@ -295,12 +347,18 @@ export async function generateIndividualReports(files, sortAlpha, convertNumbers
     const principais = items.filter(i => i.info.isPrincipalCorretora).length;
     const vendedoresMap = new Map();
     let mapTotal = 0;
+    // Linhas brutas (com CPF, contrato, parcela etc.) de cada arquivo original desta
+    // corretora, na mesma ordem usada para montar o Excel gerado acima. Guardado no
+    // resumo para permitir reconstruir o arquivo completo mais tarde (ex: ao baixar
+    // de novo pelo histórico de "Relatórios Salvos").
+    const rawBlocks = [];
 
     for (const item of items) {
       const total = getItemCommissionTotal(item, []);
       mapTotal += total;
 
       const rows = item.rows || (item.sheet ? getRowsFromXlsxSheet(item.sheet) : []);
+      rawBlocks.push(rows);
       let headerRow = null;
       let vendedorIdx = -1;
       let comissaoIdx = -1;
@@ -369,28 +427,135 @@ export async function generateIndividualReports(files, sortAlpha, convertNumbers
       total: finalTotal,
       totalConsolidado: finalTotal,
       vendedoresDetalhes,
-      nomesVendedores
+      nomesVendedores,
+      rawBlocks
     });
 
     generated++;
     if (onProgress) onProgress(generated, corretoras.length, `Gerando arquivo para: ${corretora}`, 'geracao');
   }
 
-  return { summary, errors, generatedFiles };
+  const possibleDuplicateBrokers = findPossibleDuplicateBrokerPairs(summary.map(s => s.corretora));
+
+  // Confere o percentual da coluna "Regra" contra as regras cadastradas em
+  // "Regras de comissão". Só gera aviso: os valores do relatório continuam sendo
+  // exatamente os da planilha de origem.
+  let commissionDivergences = [];
+  try {
+    const rules = await getCommissionRules();
+    const found = summary.flatMap(item =>
+      findCommissionRuleDivergences(item.rawBlocks, item.corretora, rules)
+    );
+    commissionDivergences = summarizeDivergences(found);
+  } catch (err) {
+    console.error('Erro ao verificar regras de comissão:', err);
+  }
+
+  return { summary, errors, generatedFiles, possibleDuplicateBrokers, commissionDivergences };
+}
+
+// Refaz as planilhas das corretoras que tinham divergência de percentual, agora com
+// a comissão recalculada (Recebido × percentual cadastrado) e o total do bloco
+// atualizado. As células alteradas ficam destacadas em amarelo com um comentário,
+// para a correção continuar auditável ao lado do arquivo do sistema de origem.
+export async function applyCommissionCorrections(result, convertNumbers = true) {
+  const rules = await getCommissionRules();
+
+  const summary = [];
+  const generatedFiles = [];
+  const allCorrections = [];
+
+  for (const item of result.summary) {
+    const { blocks, corrections } = applyCommissionRuleCorrections(item.rawBlocks, item.corretora, rules);
+
+    if (corrections.length === 0) {
+      summary.push(item);
+      const untouched = result.generatedFiles.find(f => f.corretora === item.corretora);
+      if (untouched) generatedFiles.push(untouched);
+      continue;
+    }
+
+    allCorrections.push(...corrections);
+
+    const wbOut = new ExcelJS.Workbook();
+    wbOut.creator = 'glzn-comercial';
+    wbOut.created = new Date();
+    const wsOut = wbOut.addWorksheet('Comissões Gerais', { views: [{ showGridLines: true }] });
+
+    // Guarda onde cada bloco começou na planilha, para converter (blockIndex,
+    // rowIndex) das correções na linha real da worksheet e destacar a célula.
+    const blockStartRows = [];
+    let nextRow = 1;
+    for (const rows of blocks) {
+      blockStartRows.push(nextRow);
+      nextRow = copyBlock({ type: 'raw', rows }, wsOut, nextRow, convertNumbers);
+    }
+
+    for (const correction of corrections) {
+      const sheetRow = blockStartRows[correction.blockIndex] + correction.rowIndex;
+      for (const col of [correction.colunaRegra, correction.colunaComissao]) {
+        const cell = wsOut.getCell(sheetRow, col + 1);
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF3C7' } };
+        cell.font = { ...(cell.font || {}), bold: true, color: { argb: 'FF92400E' } };
+      }
+      const comissaoCell = wsOut.getCell(sheetRow, correction.colunaComissao + 1);
+      comissaoCell.note = `Corrigido pelo sistema: regra ${correction.regraAnterior}% -> ${correction.regraNova}%. `
+        + `Valor original: ${formatBRL(correction.comissaoAnterior ?? 0)}.`;
+    }
+
+    const consolidation = consolidateCommissionTotalsInWorksheet(wsOut);
+
+    const buffer = await wbOut.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const fileName = `${safeFileName(item.corretora)}.xlsx`;
+    generatedFiles.push({ fileName, blob, corretora: item.corretora });
+
+    const novoTotal = (consolidation.found && consolidation.total > 0) ? consolidation.total : item.total;
+    const delta = novoTotal - (item.totalConsolidado ?? item.total ?? 0);
+
+    summary.push({
+      ...item,
+      rawBlocks: blocks,
+      total: novoTotal,
+      totalConsolidado: novoTotal,
+      totalAnterior: item.totalConsolidado ?? item.total ?? 0,
+      diferencaCorrecao: delta,
+      correcoesAplicadas: corrections.length
+    });
+  }
+
+  // Ordena igual à geração original para a tabela de resultado não embaralhar.
+  summary.sort((a, b) => a.corretora.localeCompare(b.corretora, 'pt-BR'));
+
+  return {
+    ...result,
+    summary,
+    generatedFiles,
+    commissionDivergences: [],
+    appliedCorrections: allCorrections.length,
+    correctedBrokers: summary.filter(s => s.correcoesAplicadas > 0).map(s => ({
+      corretora: s.corretora,
+      correcoes: s.correcoesAplicadas,
+      totalAnterior: s.totalAnterior,
+      totalNovo: s.total,
+      diferenca: s.diferencaCorrecao
+    }))
+  };
 }
 
 export async function parseGeneralInputs(files, onProgress) {
   const blocks = [];
   const errors = [];
   let readCount = 0;
+  const resolverCorretora = createCorretoraResolver();
 
   for (const file of files) {
     try {
       const item = await readInput(file, false);
       const rows = item.type === 'html-xls' ? item.rows : getRowsFromXlsxSheet(item.sheet);
-      
+
       const corretoraOriginal = item.info.corretora || 'Corretora não identificada';
-      const corretora = await normalizarCorretoraParaGrupo(corretoraOriginal);
+      const corretora = await resolverCorretora(corretoraOriginal);
 
       let total = 0;
       const result = findTotalInRows(rows);

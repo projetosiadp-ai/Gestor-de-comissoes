@@ -55,7 +55,24 @@ export function sanitizeSavedReportForCloud(report, user, encryptedSellerData) {
     inputFiles: number(report.inputFiles),
     errors: Array.isArray(report.errors) ? report.errors.length : number(report.errors),
     encryptedSellerData: text(encryptedSellerData, 200000),
+    convertNumbers: Boolean(report.convertNumbers),
     deletedAt: null,
     deletedByUid: null
+  };
+}
+
+// Tamanho máximo do blob cifrado de detalhe (linha a linha, com CPF/contrato/parcela)
+// de UMA corretora. Cada corretora tem seu próprio documento (subcoleção
+// broker_details) para não esbarrar no limite de 1 MiB por documento do Firestore
+// mesmo em relatórios com muitas corretoras.
+export const MAX_ENCRYPTED_BROKER_DETAIL_LENGTH = 900000;
+
+export function sanitizeBrokerDetailForCloud(corretora, encryptedRows, user) {
+  if (!user?.uid) throw new Error('Usuário autenticado obrigatório para sincronizar.');
+
+  return {
+    corretora: text(corretora, 200),
+    encryptedRows: text(encryptedRows, MAX_ENCRYPTED_BROKER_DETAIL_LENGTH),
+    createdByUid: text(user.uid, 128)
   };
 }
