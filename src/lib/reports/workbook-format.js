@@ -126,6 +126,14 @@ function isPjLabelRow(row) {
   return values.length === 1 && String(values[0]).trim().toUpperCase() === 'PJ';
 }
 
+function isRowBlank(worksheet, row, maxCol) {
+  for (let col = 1; col <= maxCol; col++) {
+    const value = worksheet.getCell(row, col).value;
+    if (value !== null && value !== undefined && String(value).trim() !== '') return false;
+  }
+  return true;
+}
+
 const THICK_BORDER = { style: 'medium', color: { argb: 'FF000000' } };
 
 // Desenha uma borda mais grossa só no perímetro externo da tabela (topo, base,
@@ -171,7 +179,14 @@ function applyTableSectionBorders(worksheet, startRow, lastRow, lastCol) {
     return;
   }
 
-  const mainSectionEnd = Math.max(mainHeaderRow, pjLabelRow - 2);
+  // A quantidade de linhas em branco entre o fim da tabela principal (dados, ou
+  // "TOTAL GERAL" quando existe) e o rótulo "PJ" varia conforme a origem do
+  // arquivo — por isso soma-se de volta a partir do rótulo até achar a última
+  // linha com conteúdo, em vez de assumir uma posição fixa.
+  let mainSectionEnd = pjLabelRow - 1;
+  while (mainSectionEnd > mainHeaderRow && isRowBlank(worksheet, mainSectionEnd, lastCol)) {
+    mainSectionEnd -= 1;
+  }
   applyOuterBorder(worksheet, mainHeaderRow, mainSectionEnd, 1, lastHeaderColumn(worksheet, mainHeaderRow, lastCol));
 
   worksheet.getRow(pjLabelRow).font = { bold: true, size: 12 };
