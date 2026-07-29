@@ -14,7 +14,7 @@ export default function Sidebar({ collapsed, onToggle, items, activePage, onNavi
       <div className="sidebar-brand" style={{ position: 'relative', width: '100%' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
           {!collapsed ? (
-            <DentalPlusLogo />
+            <DentalPlusLogo dentalColor="#fff" />
           ) : (
             <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#fff', display: 'grid', placeItems: 'center', fontWeight: '900', color: 'var(--logo-dental-color)', fontSize: '15px' }}>D</div>
           )}
