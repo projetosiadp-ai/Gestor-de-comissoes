@@ -14,7 +14,6 @@ import { subscribeReports, syncReport, trashReport as trashCloudReport } from '.
 import { getSavedReports, deleteReport as deleteLocalReport } from './services/historyService';
 import Sidebar from './components/layout/Sidebar';
 import Topbar from './components/layout/Topbar';
-import LogConsole from './components/layout/LogConsole';
 
 const NewReport = lazy(() => import('./pages/NewReport'));
 const SavedReports = lazy(() => import('./pages/SavedReports'));
@@ -284,20 +283,6 @@ export default function App() {
           </PageLoadErrorBoundary>
         </div>
       </main>
-
-      <LogConsole
-        logs={logs}
-        setLogs={setLogs}
-        visible={showConsole}
-        setVisible={setShowConsole}
-        filter={logSeverityFilter}
-        setFilter={setLogSeverityFilter}
-        filteredLogs={filteredLogs}
-        bodyRef={consoleBodyRef}
-        copyFeedback={copyFeedback}
-        onCopy={handleCopyLogs}
-        errorCount={errorLogsCount}
-      />
     </div>
   );
 }

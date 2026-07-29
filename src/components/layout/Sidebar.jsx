@@ -44,12 +44,6 @@ export default function Sidebar({ collapsed, onToggle, items, activePage, onNavi
           );
         })}
       </nav>
-
-      <div className="sidebar-footer">
-        <strong>Contabilizador de Comissões</strong>
-        <span>Uso interno · v1.0</span>
-        <small>Desenvolvido por<br /><b>glzn-comercial</b> · <b>Lucas - Financeiro</b></small>
-      </div>
     </aside>
   );
 }
