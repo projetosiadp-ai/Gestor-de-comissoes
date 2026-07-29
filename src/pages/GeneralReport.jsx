@@ -6,6 +6,7 @@ import {
 import { formatBRL } from '../App';
 import { parseGeneralInputs, generateGeneralExcel } from '../services/reportGenerator';
 import { areLikelySameBroker } from '../lib/core/text.js';
+import MonthPicker from '../components/MonthPicker';
 
 function findPossibleDuplicateBrokerPairs(names) {
   const relevant = names.filter(n => n && n !== 'Corretora não identificada');
@@ -248,12 +249,7 @@ export default function GeneralReport({ refreshHistory, addLog }) {
         <div className="report-setup">
           <div className="date-column">
             <label>Mês de Referência</label>
-            <input
-              type="month"
-              value={reportMonth}
-              onChange={(e) => setReportMonth(e.target.value)}
-              disabled={parsing || generating}
-            />
+            <MonthPicker value={reportMonth} onChange={setReportMonth} disabled={parsing || generating} />
             <p>Selecione o mês para nomear a aba e o arquivo de saída.</p>
           </div>
 

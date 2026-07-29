@@ -10,6 +10,7 @@ import { generateIndividualReports, applyCommissionCorrections } from '../servic
 import { analyzeFile } from '../lib/reports/input-reader';
 import { saveReport } from '../services/historyService';
 import { useAuth } from '../auth/AuthContext';
+import MonthPicker from '../components/MonthPicker';
 
 function formatBytes(bytes) {
   if (bytes === undefined || bytes === null || isNaN(bytes)) return 'N/A';
@@ -432,12 +433,7 @@ export default function NewReport({ refreshHistory, addLog, onReportCreated, kno
       <section className="panel report-setup">
         <div className="date-column">
           <label htmlFor="reportMonth">Mês de referência</label>
-          <input 
-            id="reportMonth" 
-            type="month" 
-            value={reportMonth} 
-            onChange={(e) => setReportMonth(e.target.value)} 
-          />
+          <MonthPicker id="reportMonth" value={reportMonth} onChange={setReportMonth} />
           <p>O mês será usado para nomear e salvar o relatório no histórico.</p>
         </div>
 
