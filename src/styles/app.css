@@ -331,7 +331,7 @@ button { cursor: pointer; }
 .main-area { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .topbar { height: 68px; position: sticky; top: 0; z-index: 5; background: var(--panel); border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; padding: 0 28px; backdrop-filter: blur(10px); transition: background-color 0.25s ease, border-color 0.25s ease; }
 .topbar > div { display: grid; gap: 4px; }
-.topbar strong { color: #0a428d; font-size: 17px; }
+.topbar strong { color: #0a428d; font-size: 16px; }
 .topbar span:not(.alpha-pill) { color: var(--muted); font-size: 12px; }
 .topbar .topbar-actions {
   display: flex;
@@ -358,8 +358,8 @@ button { cursor: pointer; }
 @keyframes fade { from { opacity: .3; transform: translateY(3px); } to { opacity: 1; transform: none; } }
 .page-title { display: flex; justify-content: space-between; gap: 20px; align-items: center; margin-bottom: 21px; }
 h1, h2, p { margin-top: 0; }
-h1 { margin-bottom: 7px; font-size: 27px; }
-h2 { margin-bottom: 5px; font-size: 17px; }
+h1 { margin-bottom: 7px; font-size: 20px; }
+h2 { margin-bottom: 5px; font-size: 16px; }
 .page-title p, .panel-head p, .muted { color: var(--muted); margin-bottom: 0; }
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 13px; padding: 22px; box-shadow: var(--shadow); margin-bottom: 18px; }
 .compact-panel { padding: 18px 22px; }
@@ -404,11 +404,11 @@ input:focus { border-color: #0d79e7; box-shadow: 0 0 0 3px rgba(13,121,231,.11);
 /* Gráfico de barras SVG */
 .chart-wrap { width: 100%; overflow: hidden; }
 .bar-chart-svg { width: 100%; display: block; }
-.chart-label { font-size: 22px; fill: var(--muted); font-family: "Segoe UI", Arial, sans-serif; }
+.chart-label { font-size: 14px; fill: var(--muted); font-family: "Segoe UI", Arial, sans-serif; }
 .chart-bar-bg { fill: #eef3fb; }
 .chart-bar { fill: url(#barGrad); fill: #0766d8; opacity: 0.85; transition: opacity .15s; }
 .chart-bar:hover { opacity: 1; }
-.chart-value { font-size: 20px; fill: #0a428d; font-weight: 700; font-family: "Segoe UI", Arial, sans-serif; dominant-baseline: middle; }
+.chart-value { font-size: 16px; fill: #0a428d; font-weight: 700; font-family: "Segoe UI", Arial, sans-serif; dominant-baseline: middle; }
 
 /* Lista de cards */
 .report-card-list { display: flex; flex-direction: column; gap: 12px; }
@@ -1126,7 +1126,7 @@ input:focus { border-color: #0d79e7; box-shadow: 0 0 0 3px rgba(13,121,231,.11);
   width: 100%;
 }
 .auth-card.pending { justify-items: center; text-align: center; }
-.auth-card h1 { color: #062a60; font-size: 24px; margin: 0; }
+.auth-card h1 { color: #062a60; font-size: 20px; margin: 0; }
 .auth-card p { color: #52657a; line-height: 1.55; margin: 0; }
 .auth-card form { display: grid; gap: 13px; }
 .auth-card label { color: #17324d; display: grid; font-size: 12px; font-weight: 750; gap: 6px; }
