@@ -10,6 +10,30 @@ import { formatBRL } from '../App';
 import MonthLineChart from '../components/MonthLineChart';
 import MonthComparison from '../components/MonthComparison';
 
+/* Mini-gráfico de tendência (últimos meses) exibido dentro de cada card de KPI */
+function Sparkline({ data, color = 'var(--primary)' }) {
+  const width = 72;
+  const height = 24;
+  if (!data || data.length < 2) return null;
+
+  const min = Math.min(...data);
+  const max = Math.max(...data);
+  const range = max - min || 1;
+  const step = width / (data.length - 1);
+
+  const points = data.map((value, i) => {
+    const x = i * step;
+    const y = height - ((value - min) / range) * height;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+
+  return (
+    <svg className="metric-sparkline" width={width} height={height} viewBox={`0 0 ${width} ${height}`} aria-hidden="true">
+      <polyline points={points} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 /* ─────────────────────────────────────────────
    Card expansível de um relatório mensal
    • Substituídos ícones Unicode por lucide-react
@@ -205,6 +229,20 @@ export default function Dashboard({ savedReports, onNavigate, refreshHistory, is
     };
   }, [sortedReports]);
 
+  // Séries históricas (até 6 últimos meses, ordem cronológica) para os mini-gráficos de tendência
+  const trends = useMemo(() => {
+    const recent = sortedReports.slice(0, 6).reverse();
+    return {
+      comissoes: recent.map(r => Number(r.totalValue || 0)),
+      corretoras: recent.map(r => Number(r.brokers ?? r.summary?.length ?? 0)),
+      vendedores: recent.map(r => Number(r.sellers || 0)),
+      media: recent.map(r => {
+        const c = Number(r.brokers ?? r.summary?.length ?? 0);
+        return c ? Number(r.totalValue || 0) / c : 0;
+      })
+    };
+  }, [sortedReports]);
+
   return (
     <div id="page-dashboard" className="page active">
       <div className="page-title">
@@ -238,6 +276,7 @@ export default function Dashboard({ savedReports, onNavigate, refreshHistory, is
                   {kpis.diffComissoes >= 0 ? '▲' : '▼'} {Math.abs(kpis.diffComissoes).toFixed(1)}% vs anterior
                 </span>
               )}
+              <Sparkline data={trends.comissoes} color="#0566d8" />
             </div>
           </div>
 
@@ -252,6 +291,7 @@ export default function Dashboard({ savedReports, onNavigate, refreshHistory, is
                   {kpis.diffCorretoras >= 0 ? '▲' : '▼'} {Math.abs(kpis.diffCorretoras)} corretora{Math.abs(kpis.diffCorretoras) !== 1 ? 's' : ''}
                 </span>
               )}
+              <Sparkline data={trends.corretoras} color="#008fc7" />
             </div>
           </div>
 
@@ -266,6 +306,7 @@ export default function Dashboard({ savedReports, onNavigate, refreshHistory, is
                   {kpis.diffVendedores >= 0 ? '▲' : '▼'} {Math.abs(kpis.diffVendedores)} vendedor{Math.abs(kpis.diffVendedores) !== 1 ? 'es' : ''}
                 </span>
               )}
+              <Sparkline data={trends.vendedores} color="#159354" />
             </div>
           </div>
 
@@ -280,6 +321,7 @@ export default function Dashboard({ savedReports, onNavigate, refreshHistory, is
                   {kpis.diffMedia >= 0 ? '▲' : '▼'} {Math.abs(kpis.diffMedia).toFixed(1)}% vs anterior
                 </span>
               )}
+              <Sparkline data={trends.media} color="#cc7800" />
             </div>
           </div>
         </div>

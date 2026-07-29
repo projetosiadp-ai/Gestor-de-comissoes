@@ -76,11 +76,14 @@ html, body {
   border-color: var(--line) !important; 
 }
 .dark .metric,
-.dark .panel { 
-  background: var(--panel) !important; 
-  border-color: var(--line) !important; 
-  color: var(--text) !important; 
+.dark .panel {
+  background: var(--panel) !important;
+  border-color: var(--line) !important;
+  color: var(--text) !important;
   box-shadow: var(--shadow) !important;
+}
+.dark .metric:hover {
+  box-shadow: 0 16px 32px rgba(0, 0, 0, .35) !important;
 }
 .dark th { 
   background-color: var(--bg) !important; 
@@ -365,9 +368,11 @@ h2 { margin-bottom: 5px; font-size: 16px; font-weight: 600; letter-spacing: -0.0
 .compact-panel { padding: 18px 22px; }
 .panel-head, .selection-head, .output-row, .progress-head, .action-row { display: flex; justify-content: space-between; align-items: center; gap: 15px; }
 .metric-grid { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 14px; margin-bottom: 19px; }
-.metric { container-type: inline-size; min-height: 112px; display: flex; align-items: center; gap: 12px; background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 16px; box-shadow: var(--shadow); }
+.metric { container-type: inline-size; min-height: 112px; display: flex; align-items: center; gap: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px; box-shadow: var(--shadow); transition: transform 0.18s ease, box-shadow 0.18s ease; }
+.metric:hover { transform: translateY(-3px); box-shadow: 0 16px 32px rgba(23, 72, 126, .12); }
 .metric-icon { width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; font-weight: 900; font-size: 19px; flex: 0 0 auto; }
-.metric-icon.blue { background: #e2efff; color: #0566d8; }.metric-icon.cyan { background: #dff7ff; color: #008fc7; }.metric-icon.green { background: #e2f8ec; color: #159354; }.metric-icon.amber { background: #fff0d8; color: #cc7800; }
+.metric-icon.blue { background: linear-gradient(135deg, #e2efff, #cbe1ff); color: #0566d8; }.metric-icon.cyan { background: linear-gradient(135deg, #dff7ff, #c3f0ff); color: #008fc7; }.metric-icon.green { background: linear-gradient(135deg, #e2f8ec, #c9f2dc); color: #159354; }.metric-icon.amber { background: linear-gradient(135deg, #fff0d8, #ffe3b3); color: #cc7800; }
+.metric-sparkline { display: block; margin-top: 4px; opacity: .85; }
 .metric div { min-width: 0; }.metric small { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; display: block; margin-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }.metric strong { font-size: clamp(15px, 9.5cqi, 24px); font-weight: 700; letter-spacing: -0.01em; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.15; }
 .primary, .secondary, .ghost { border-radius: 8px; padding: 10px 15px; border: 1px solid transparent; font-weight: 700; }
 .primary { background: linear-gradient(90deg, #075fc9, #0c7ae8); color: #fff; box-shadow: 0 7px 16px rgba(5,100,216,.2); }.primary:hover { filter: brightness(1.05); }.primary:disabled { opacity: .55; cursor: wait; }
