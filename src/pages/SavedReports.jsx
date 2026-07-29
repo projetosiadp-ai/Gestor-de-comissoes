@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FolderOpen, Download, Trash2, FileSpreadsheet, ChevronDown, ChevronRight, Eye, Archive } from 'lucide-react';
+import { FolderOpen, Download, Trash2, FileSpreadsheet, ChevronDown, ChevronRight, Eye, Archive, PlusCircle } from 'lucide-react';
 import { formatBRL } from '../App';
 import { 
   exportSavedReportWorkbooks, 
@@ -38,11 +38,10 @@ function HistoryTable({ reports, onDelete, isAdmin }) {
               <React.Fragment key={report.id}>
                 <tr>
                   <td>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <button 
-                        className="ghost" 
+                    <div className="history-report-label">
+                      <button
+                        className="ghost row-action-btn icon-only"
                         onClick={() => setExpandedReportId(isExpanded ? null : report.id)}
-                        style={{ padding: '2px 4px', display: 'inline-flex', alignItems: 'center' }}
                         title="Ver corretoras e planilhas individuais"
                       >
                         {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
@@ -57,40 +56,36 @@ function HistoryTable({ reports, onDelete, isAdmin }) {
                   <td>{new Date(report.createdAt).toLocaleString('pt-BR')}</td>
                   <td>{report.createdByName || '—'}</td>
                   <td>
-                    <div className="history-row-actions" style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end', alignItems: 'center', flexWrap: 'wrap' }}>
-                      <button 
-                        className="primary" 
+                    <div className="history-row-actions">
+                      <button
+                        className="primary row-action-btn"
                         onClick={() => exportSavedReportWorkbooks(report, { chooseFolder: true })}
                         title="Escolher a pasta no seu computador e salvar todas as planilhas individuais (.xlsx) diretamente nela de uma vez"
-                        style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', padding: '6px 12px' }}
                       >
                         <FolderOpen size={14} /> Salvar direto na pasta...
                       </button>
 
-                      <button 
-                        className="secondary" 
+                      <button
+                        className="secondary row-action-btn"
                         onClick={() => exportSavedReportZip(report)}
                         title="Baixar todas as planilhas individuais (.xlsx) juntas dentro de 1 único arquivo ZIP (Zero janelas pop-up repetidas!)"
-                        style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', padding: '6px 12px' }}
                       >
                         <Archive size={14} /> Baixar todas em ZIP
                       </button>
 
-                      <button 
-                        className={`ghost ${isExpanded ? 'active' : ''}`} 
+                      <button
+                        className={`ghost row-action-btn icon-only ${isExpanded ? 'active' : ''}`}
                         onClick={() => setExpandedReportId(isExpanded ? null : report.id)}
                         title="Ver lista de corretoras e baixar individualmente"
-                        style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '12px', padding: '6px 10px' }}
                       >
                         <Eye size={13} /> Corretoras ({summary.length})
                       </button>
 
                       {isAdmin && (
-                        <button 
-                          className="delete" 
-                          onClick={() => onDelete(report.id)} 
+                        <button
+                          className="delete row-action-btn icon-only"
+                          onClick={() => onDelete(report.id)}
                           title="Mover para lixeira"
-                          style={{ padding: '6px 10px', fontSize: '12px' }}
                         >
                           <Trash2 size={13} />
                         </button>
@@ -102,29 +97,27 @@ function HistoryTable({ reports, onDelete, isAdmin }) {
                 {/* Sub-tabela expansível com as planilhas individuais por corretora */}
                 {isExpanded && (
                   <tr>
-                    <td colSpan={8} style={{ background: 'var(--panel-subtle, rgba(0,0,0,0.02))', padding: '16px 24px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
+                    <td colSpan={8} className="history-detail-cell">
+                      <div className="history-detail-head">
                         <div>
-                          <strong style={{ fontSize: '14px', color: 'var(--primary)' }}>
+                          <strong className="history-detail-title">
                             Planilhas individuais por corretora - {report.label}
                           </strong>
-                          <p style={{ margin: '2px 0 0 0', fontSize: '12px', color: 'var(--muted)' }}>
+                          <p className="history-detail-hint">
                             Você pode salvar todas as planilhas individuais em uma pasta do computador, baixar um pacote ZIP único com todas dentro ou baixar cada uma separadamente.
                           </p>
                         </div>
-                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                          <button 
-                            className="primary" 
+                        <div className="history-row-actions">
+                          <button
+                            className="primary row-action-btn"
                             onClick={() => exportSavedReportWorkbooks(report, { chooseFolder: true })}
-                            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', padding: '6px 12px' }}
                           >
                             <FolderOpen size={14} /> Salvar direto na pasta do Windows...
                           </button>
 
-                          <button 
-                            className="secondary" 
+                          <button
+                            className="secondary row-action-btn"
                             onClick={() => exportSavedReportZip(report)}
-                            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', padding: '6px 12px' }}
                           >
                             <Archive size={14} /> Baixar todas em 1 pacote ZIP
                           </button>
@@ -213,9 +206,9 @@ export default function SavedReports({ savedReports, refreshHistory, onNavigate,
           <h1>Relatórios salvos</h1>
           <p>Escolha a pasta do seu computador/rede para salvar todas as planilhas individuais (.xlsx) do mês ou baixe um arquivo ZIP único com todas elas.</p>
         </div>
-        <div style={{ display: 'flex', gap: '10px' }}>
-          <button className="primary" onClick={() => onNavigate('new-report')}>
-            ＋ Novo relatório
+        <div className="page-title-actions">
+          <button className="primary row-action-btn" onClick={() => onNavigate('new-report')}>
+            <PlusCircle size={16} /> Novo relatório
           </button>
         </div>
       </div>
