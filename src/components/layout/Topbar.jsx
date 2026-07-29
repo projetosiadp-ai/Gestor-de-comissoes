@@ -1,10 +1,19 @@
 import React from 'react';
 import { Moon, Sun } from 'lucide-react';
 
+function initialsFor(name) {
+  if (!name) return '?';
+  const parts = name.trim().split(/\s+/);
+  const first = parts[0]?.[0] || '';
+  const last = parts.length > 1 ? parts[parts.length - 1][0] : '';
+  return (first + last).toUpperCase() || '?';
+}
+
 export default function Topbar({ subtitle, theme, onToggleTheme, session, cloudState }) {
   const syncLabel = session.configured
     ? cloudState.hasPendingWrites ? 'Sincronizando' : cloudState.fromCache ? 'Offline' : 'Sincronizado'
     : 'Modo local';
+  const displayName = session.profile?.displayName || session.user?.email || 'Usuário';
 
   return (
     <header className="topbar">
@@ -19,8 +28,10 @@ export default function Topbar({ subtitle, theme, onToggleTheme, session, cloudS
           {theme === 'light' ? 'Escuro' : 'Claro'}
         </button>
         <span className="alpha-pill">v1.0</span>
+        <div className="topbar-divider" />
         <button className="user-pill" onClick={session.configured ? session.logout : undefined} title={session.configured ? 'Sair da conta' : 'Firebase não configurado'}>
-          {session.profile?.displayName || session.user?.email || 'Usuário'} · {session.profile?.role === 'admin' ? 'Administrador' : 'Operador'}
+          <span className="user-avatar">{initialsFor(displayName)}</span>
+          {displayName} · {session.profile?.role === 'admin' ? 'Administrador' : 'Operador'}
         </button>
       </div>
     </header>

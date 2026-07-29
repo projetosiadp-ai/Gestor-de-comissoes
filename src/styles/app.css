@@ -339,7 +339,13 @@ button { cursor: pointer; }
 .topbar .topbar-actions {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
+}
+.topbar-divider {
+  width: 1px;
+  height: 22px;
+  background: var(--line);
+  margin: 0 2px;
 }
 .theme-toggle {
   display: flex;
@@ -347,13 +353,15 @@ button { cursor: pointer; }
   gap: 6px;
   padding: 6px 12px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 999px;
   background: transparent;
   color: var(--text);
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
 }
+.theme-toggle:hover { background: var(--bg); border-color: #c9d8e8; }
 .alpha-pill { background: #e6f2ff; color: #0864ca; border: 1px solid #bddcff; padding: 6px 11px; border-radius: 999px; font-size: 11px; font-weight: 900; letter-spacing: .8px; }
 .content { padding: 28px; max-width: 1500px; margin: auto; width: 100%; }
 .page { display: none; }
@@ -1143,11 +1151,37 @@ input:focus { border-color: #0d79e7; box-shadow: 0 0 0 3px rgba(13,121,231,.11);
   border-radius: 999px;
   font-size: 11px;
   font-weight: 750;
-  padding: 6px 10px;
+  padding: 6px 10px 6px 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: background-color 0.15s ease, box-shadow 0.15s ease;
+}
+.sync-pill::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: 0 0 auto;
 }
 .sync-pill.online { background: #ecfdf5; color: #047857; }
+.sync-pill.online::before { background: #10b981; box-shadow: 0 0 0 3px rgba(16,185,129,.18); }
 .sync-pill.offline { background: #f8fafc; color: #64748b; }
-.user-pill { background: var(--panel); color: var(--text); cursor: pointer; max-width: 230px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sync-pill.offline::before { background: #94a3b8; }
+.user-pill { background: var(--panel); color: var(--text); cursor: pointer; max-width: 230px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 4px 12px 4px 4px; }
+.user-pill:hover { background: var(--bg); }
+.user-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--primary), var(--cyan));
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 800;
+  flex: 0 0 auto;
+}
 .dark .auth-shell, .dark .auth-loading { background: radial-gradient(circle at top right, #0c2b4d, #091422 55%, #050b13); }
 .dark .auth-card { background: #101c2b; border-color: #23364b; }
 .dark .auth-card h1, .dark .auth-card label { color: #e5eef8; }
