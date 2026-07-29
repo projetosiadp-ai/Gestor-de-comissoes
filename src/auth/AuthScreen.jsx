@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { CheckCircle, Clock3, LogIn, ShieldCheck, UserPlus } from 'lucide-react';
+import { CheckCircle, Clock3, LogIn, UserPlus } from 'lucide-react';
 import { useAuth } from './AuthContext';
+import DentalPlusLogo from '../components/DentalPlusLogo';
 
 export default function AuthScreen() {
   const auth = useAuth();
@@ -58,7 +59,7 @@ export default function AuthScreen() {
   return (
     <main className="auth-shell">
       <section className="auth-card">
-        <div className="auth-brand"><ShieldCheck size={30} /><span>Dental Plus</span></div>
+        <div className="auth-brand"><DentalPlusLogo /></div>
         <h1>{mode === 'login' ? 'Entrar no contabilizador' : 'Solicitar acesso'}</h1>
         <p>Use sua conta individual. Os dados de clientes continuam somente nos arquivos locais.</p>
         <form onSubmit={submit}>

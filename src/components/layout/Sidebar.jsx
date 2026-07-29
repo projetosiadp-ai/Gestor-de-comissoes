@@ -16,7 +16,7 @@ export default function Sidebar({ collapsed, onToggle, items, activePage, onNavi
           {!collapsed ? (
             <DentalPlusLogo />
           ) : (
-            <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#fff', display: 'grid', placeItems: 'center', fontWeight: '900', color: '#062a60', fontSize: '15px' }}>D</div>
+            <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#fff', display: 'grid', placeItems: 'center', fontWeight: '900', color: 'var(--logo-dental-color)', fontSize: '15px' }}>D</div>
           )}
           <button className="sidebar-toggle" onClick={onToggle} aria-label={collapsed ? 'Expandir menu' : 'Recolher menu'}>
             {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
