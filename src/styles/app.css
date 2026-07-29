@@ -248,7 +248,7 @@ button { cursor: pointer; }
   color: #fff;
   cursor: pointer;
 }
-.side-nav { display: flex; flex-direction: column; gap: 7px; margin-top: 25px; }
+.side-nav { display: flex; flex-direction: column; gap: 7px; margin-top: 25px; flex: 1; min-height: 0; overflow-y: auto; }
 .nav-item { 
   border: 0; 
   background: transparent; 
