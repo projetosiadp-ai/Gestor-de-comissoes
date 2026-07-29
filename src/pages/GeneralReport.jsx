@@ -328,7 +328,7 @@ export default function GeneralReport({ refreshHistory, addLog }) {
           gap: '8px'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <span style={{ fontSize: '18px' }}>⚠️</span>
+            <AlertCircle size={18} color="#92400e" />
             <strong style={{ color: '#92400e', fontSize: '14px' }}>Possíveis corretoras duplicadas</strong>
           </div>
           <div style={{ color: '#78350f', fontSize: '13px', lineHeight: '1.6' }}>

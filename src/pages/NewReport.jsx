@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   Upload, FileSpreadsheet, FileCode, File, X, Trash2, 
   Settings, FolderOpen, Play, CheckCircle, AlertCircle, RefreshCw,
-  Users, DollarSign, Search, ShieldAlert, FileDown, Download, Wand2
+  Users, DollarSign, Search, ShieldAlert, FileDown, Download, Wand2, ClipboardList
 } from 'lucide-react';
 import { saveAs } from 'file-saver';
 import { formatBRL } from '../App';
@@ -549,7 +549,7 @@ export default function NewReport({ refreshHistory, addLog, onReportCreated, kno
           boxShadow: '0 4px 12px rgba(239, 68, 68, 0.05)'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <span style={{ fontSize: '20px' }}>⚠️</span>
+            <AlertCircle size={20} color="#991b1b" />
             <strong style={{ color: '#991b1b', fontSize: '15px' }}>Comissão Duplicada Detectada!</strong>
           </div>
           <div style={{ color: '#7f1d1d', fontSize: '13px', lineHeight: '1.6' }}>
@@ -597,7 +597,7 @@ export default function NewReport({ refreshHistory, addLog, onReportCreated, kno
           gap: '10px',
           boxShadow: '0 4px 12px rgba(16, 185, 129, 0.05)'
         }}>
-          <span style={{ fontSize: '20px' }}>✓</span>
+          <CheckCircle size={20} color="#065f46" />
           <span style={{ color: '#065f46', fontSize: '13px' }}>
             <strong>Duplicidades corrigidas com sucesso!</strong> Os relatórios serão gerados mantendo apenas os registros PJ e removendo as redundâncias do PF.
           </span>
@@ -682,7 +682,7 @@ export default function NewReport({ refreshHistory, addLog, onReportCreated, kno
           gap: '8px'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <span style={{ fontSize: '18px' }}>⚠️</span>
+            <AlertCircle size={18} color="#92400e" />
             <strong style={{ color: '#92400e', fontSize: '14px' }}>Possíveis corretoras duplicadas</strong>
           </div>
           <div style={{ color: '#78350f', fontSize: '13px', lineHeight: '1.6' }}>
@@ -710,7 +710,7 @@ export default function NewReport({ refreshHistory, addLog, onReportCreated, kno
           gap: '8px'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <span style={{ fontSize: '18px' }}>📋</span>
+            <ClipboardList size={18} color="#9a3412" />
             <strong style={{ color: '#9a3412', fontSize: '14px' }}>
               Comissões fora da regra cadastrada ({result.commissionDivergences.length})
             </strong>
@@ -803,7 +803,7 @@ export default function NewReport({ refreshHistory, addLog, onReportCreated, kno
           gap: '8px'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <span style={{ fontSize: '18px' }}>✅</span>
+            <CheckCircle size={18} color="#065f46" />
             <strong style={{ color: '#065f46', fontSize: '14px' }}>Comissões corrigidas</strong>
           </div>
           <div style={{ color: '#065f46', fontSize: '13px', lineHeight: '1.6' }}>

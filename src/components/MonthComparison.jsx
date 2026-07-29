@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Search, Calendar, Lightbulb, ChevronUp } from 'lucide-react';
 import { formatBRL } from '../App';
 
 /* ──────────────────────────────────────────────────────────────
@@ -212,7 +213,7 @@ export default function MonthComparison({ reports }) {
         className={`cmp-toggle ${open ? 'open' : ''}`}
         onClick={() => setOpen(v => !v)}
       >
-        <span className="cmp-toggle-icon">{open ? '▲' : '🔍'}</span>
+        <span className="cmp-toggle-icon">{open ? <ChevronUp size={14} /> : <Search size={14} />}</span>
         {open ? 'Fechar análise comparativa' : 'Ver análise comparativa entre meses'}
         {!open && reports.length >= 2 && (
           <span className="cmp-toggle-badge">{reports.length} meses disponíveis</span>
@@ -226,7 +227,7 @@ export default function MonthComparison({ reports }) {
           {/* Seletores de mês */}
           <div className="cmp-selectors">
             <div className="cmp-sel-group">
-              <label className="cmp-sel-label">📅 Mês base (anterior)</label>
+              <label className="cmp-sel-label"><Calendar size={13} /> Mês base (anterior)</label>
               <select
                 className="cmp-select"
                 value={baseId}
@@ -242,7 +243,7 @@ export default function MonthComparison({ reports }) {
             <div className="cmp-arrow-sep">→</div>
 
             <div className="cmp-sel-group">
-              <label className="cmp-sel-label">📅 Mês de comparação</label>
+              <label className="cmp-sel-label"><Calendar size={13} /> Mês de comparação</label>
               <select
                 className="cmp-select"
                 value={cmpId}
@@ -350,8 +351,8 @@ export default function MonthComparison({ reports }) {
               {/* ── Insights automáticos ── */}
               {insights.length > 0 && (
                 <>
-                  <div className="cmp-section-title" style={{ marginTop: 24 }}>
-                    💡 Análise automática
+                  <div className="cmp-section-title" style={{ marginTop: 24, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Lightbulb size={14} /> Análise automática
                   </div>
                   <div className="cmp-insights">
                     {insights.map((ins, i) => (
